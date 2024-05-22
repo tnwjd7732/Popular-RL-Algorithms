@@ -30,7 +30,7 @@ n_epis        = 10000
 vf_coef       = 0.5
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# add to commit
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", type=str, default='test',
