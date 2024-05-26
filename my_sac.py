@@ -26,7 +26,7 @@ parser.add_argument('--test', dest='test', action='store_true', default=False)
 args = parser.parse_args()
 
 
-class ReplayBuffer:
+class ReplayBuffer_SAC:
     def __init__(self, capacity):
         self.capacity = capacity
         self.buffer = []
@@ -111,7 +111,7 @@ class PolicyNetwork(nn.Module):
 
 
 class SAC_Trainer():
-    def __init__(self, replay_buffer, hidden_dim):
+    def __init__(self, replay_buffer, hidden_dim, state_dim, action_dim):
         self.replay_buffer = replay_buffer
 
         self.soft_q_net1 = SoftQNetwork(state_dim, action_dim, hidden_dim).to(device)

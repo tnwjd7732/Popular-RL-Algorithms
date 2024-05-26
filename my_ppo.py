@@ -6,7 +6,6 @@ import gym
 import numpy as np
 
 import torch
-torch.multiprocessing.set_start_method('forkserver', force=True) # critical for make multiprocessing work
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -15,7 +14,6 @@ from torch.distributions import Normal, MultivariateNormal
 from IPython.display import clear_output
 import matplotlib.pyplot as plt
 from IPython.display import display
-from reacher import Reacher
 import time
 
 import torch.multiprocessing as mp
@@ -25,6 +23,7 @@ from multiprocessing import Process, Manager
 from multiprocessing.managers import BaseManager
 
 import threading as td
+import parameters as params
 
 #####################  hyper parameters  ####################
 
@@ -115,41 +114,43 @@ class PolicyNetwork(nn.Module):
         # x = F.relu(self.linear3(x))
         # x = F.relu(self.linear4(x))
 
-        mean    = self.action_range * F.tanh(self.mean_linear(x))
+        mean    = self.action_range * F.sigmoid(self.mean_linear(x))
 
         # implementation 1
         # log_std = self.log_std_linear(x)
         # log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
     
         # implementation 2
+        
         zeros = torch.zeros(mean.size())
         if state.is_cuda:
             zeros = zeros.cuda()
         log_std = self.log_std(zeros)
-
+        
         return mean, log_std
         
-    def get_action(self, state, deterministic=False):
+    def get_action(self, state, deterministic=True):
         state = torch.FloatTensor(state).unsqueeze(0).to(device)
         mean, log_std = self.forward(state)
 
         if deterministic:
             action = mean
+            #print(action)
         else:
             std = log_std.exp()
             normal = Normal(mean, std)
-            action = normal.sample() 
-        action = torch.clamp(action, -self.action_range, self.action_range)
+            action = normal.sample()
+        #action = torch.clamp(action, -self.action_range, self.action_range)
         return action.squeeze(0)
 
     def sample_action(self,):
-        a=torch.FloatTensor(self.num_actions).uniform_(-1, 1)
+        a=torch.FloatTensor(self.num_actions).uniform_(0, 1)
         return a.numpy()
         
 class PPO(object):
     def __init__(self, state_dim, action_dim, hidden_dim=512, a_lr=3e-4, c_lr=3e-4):
-        self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, 2.).to(device)
-        self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, 2.).to(device)
+        self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
+        self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.critic = ValueNetwork(state_dim, hidden_dim).to(device)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=a_lr)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=c_lr)
@@ -238,9 +239,26 @@ class PPO(object):
         # 이 위치에 remain 정보, hop count 가지고 attention distribution 계산하는 코드 추가
         # encoded_state = attention distribution + s  (이렇게 해둔걸 global space에도 저장하기)
         # 위처럼 만든 상태를 아래 get_action에 넣어주기
+        key = np.vstack((params.remains, params.hop_count, params.temp)) # 3x10 크기의 배열
+        query = params.task # 1x3 크기
+        new_query = query.reshape(1,3)
+
+        key_tensor = torch.tensor(key, dtype=torch.float32)
+        query_tensor = torch.tensor(new_query, dtype=torch.float32)
+        #print(key_tensor.shape, query_tensor.shape)
+
+        scores = torch.matmul(query_tensor, key_tensor)
+        #print(scores.shape)
+
+        attn_weights = nn.functional.softmax(scores, dim=-1)
+        #task_tensor = torch.tensor(params.task, dtype=torch.float32)
+
+        encoded_state = torch.cat((attn_weights, query_tensor), dim=1)
+        #print(encoded_state)
+        params.state1 = encoded_state
         
-        a = self.actor.get_action(encoded_state, deterministic)
-        return encoded_state, a.detach().cpu().numpy()
+        action1 = self.actor.get_action(encoded_state, deterministic=True)
+        return encoded_state.detach().cpu().numpy(), action1.detach().cpu().numpy()
     
     def get_v(self, s):
         s = s.astype(np.float32)
