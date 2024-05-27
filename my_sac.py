@@ -9,6 +9,7 @@ from torch.distributions import Categorical
 from IPython.display import clear_output
 import matplotlib.pyplot as plt
 import argparse
+import parameters as params
 
 GPU = True
 device_idx = 0
@@ -69,9 +70,19 @@ class SoftQNetwork(nn.Module):
 class PolicyNetwork(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_size, init_w=3e-3, log_std_min=-20, log_std_max=2):
         super(PolicyNetwork, self).__init__()
-        
-        self.linear1 = nn.Linear(num_inputs, hidden_size)
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=4, stride=1, padding=0)
+        self.conv2 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=4, stride=1, padding=0)
+
+        self.flatten1 = nn.Flatten()
+        self.flatten2 = nn.Flatten()
+
+        self.dense1 = nn.Linear(52, 1)
+        self.dense2 = nn.Linear(52, 1)
+
+        self.linear1 = nn.Linear(6, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
+        self.linear3 = nn.Linear(hidden_size, hidden_size)
+
         # self.linear3 = nn.Linear(hidden_size, hidden_size)
         # self.linear4 = nn.Linear(hidden_size, hidden_size)
 
@@ -80,9 +91,21 @@ class PolicyNetwork(nn.Module):
         self.num_actions = num_actions
         
     def forward(self, state, softmax_dim=-1):
-        x = F.tanh(self.linear1(state))
+        
+        remain = state[:, :params.numEdge].unsqueeze(1)
+        hop = state[:, params.numEdge:params.numEdge*2].unsqueeze(1)
+        taskandfrac = state[:, params.numEdge*2:]        
+        x1 = F.relu(self.conv1(remain))
+        x2 = F.relu(self.conv2(hop))
+        x1 = self.flatten1(x1)
+        x2 = self.flatten2(x2)
+        x1 = F.tanh(self.dense1(x1))
+        x2 = F.tanh(self.dense2(x2))
+        x = torch.cat((x1, x2), dim=1)
+        x = torch.cat((x, taskandfrac), dim=1) # 1+1+4
+        x = F.tanh(self.linear1(x))
         x = F.tanh(self.linear2(x))
-        # x = F.tanh(self.linear3(x))
+        x = F.tanh(self.linear3(x))
         # x = F.tanh(self.linear4(x))
 
         probs = F.softmax(self.output(x), dim=softmax_dim)
@@ -107,7 +130,7 @@ class PolicyNetwork(nn.Module):
             action = np.argmax(probs.detach().cpu().numpy())
         else:
             action = dist.sample().squeeze().detach().cpu().numpy()
-        print(">> SAC state: ", state, "action: ", action)
+        #print(">> SAC state: ", state, "action: ", action)
         return action
 
 
@@ -133,7 +156,7 @@ class SAC_Trainer():
         self.soft_q_criterion2 = nn.MSELoss()
 
         soft_q_lr = 3e-4
-        policy_lr = 3e-1
+        policy_lr = 1e-5
         alpha_lr  = 3e-4
 
         self.soft_q_optimizer1 = optim.Adam(self.soft_q_net1.parameters(), lr=soft_q_lr)
@@ -142,7 +165,7 @@ class SAC_Trainer():
         self.alpha_optimizer = optim.Adam([self.log_alpha], lr=alpha_lr)
 
     
-    def update(self, batch_size, reward_scale=10., auto_entropy=True, target_entropy=-2, gamma=0.99, soft_tau=1e-2):
+    def update(self, batch_size, reward_scale=10., auto_entropy=False, target_entropy=-2, gamma=0.99, soft_tau=1e-2):
         state, action, reward, next_state, done = self.replay_buffer.sample(batch_size)
         # print('sample:', state, action,  reward, done)
 
@@ -192,11 +215,11 @@ class SAC_Trainer():
             alpha_loss.backward()
             self.alpha_optimizer.step()
         else:
-            self.alpha = 1.
+            self.alpha = 0.
             alpha_loss = 0
         
-        # print('q loss: ', q_value_loss1.item(), q_value_loss2.item())
-        # print('policy loss: ', policy_loss.item() )
+        print('q loss: ', q_value_loss1.item(), q_value_loss2.item())
+        print('policy loss: ', policy_loss.item() )
 
     # Soft update the target value net
         for target_param, param in zip(self.target_soft_q_net1.parameters(), self.soft_q_net1.parameters()):

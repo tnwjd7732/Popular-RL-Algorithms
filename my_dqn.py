@@ -1,0 +1,256 @@
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import time
+import random, numpy, argparse, logging, os
+from collections import namedtuple
+import numpy as np
+import datetime, math
+import gym
+import parameters as params
+
+# Hyper Parameters
+MAX_EPI=10000
+MAX_STEP = 10000
+SAVE_INTERVAL = 20
+TARGET_UPDATE_INTERVAL = 20
+
+BATCH_SIZE = 128
+REPLAY_BUFFER_SIZE = 1000
+REPLAY_START_SIZE = 200
+
+GAMMA = 0.95
+EPSILON = 0.05  # if not using epsilon scheduler, use a constant
+EPSILON_START = 1.
+EPSILON_END = 0.0005
+EPSILON_DECAY = 10000
+LR = 1e-2
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+class EpsilonScheduler():
+    def __init__(self, eps_start, eps_final, eps_decay):
+        """A scheduler for epsilon-greedy strategy.
+
+        :param eps_start: starting value of epsilon, default 1. as purely random policy 
+        :type eps_start: float
+        :param eps_final: final value of epsilon
+        :type eps_final: float
+        :param eps_decay: number of timesteps from eps_start to eps_final
+        :type eps_decay: int
+        """
+        self.eps_start = eps_start
+        self.eps_final = eps_final
+        self.eps_decay = eps_decay
+        self.epsilon = self.eps_start
+        self.ini_frame_idx = 0
+        self.current_frame_idx = 0
+
+    def reset(self, ):
+        """ Reset the scheduler """
+        self.ini_frame_idx = self.current_frame_idx
+
+    def step(self, frame_idx):
+        self.current_frame_idx = frame_idx
+        delta_frame_idx = self.current_frame_idx - self.ini_frame_idx
+        self.epsilon = self.eps_final + (self.eps_start - self.eps_final) * math.exp(-1. * delta_frame_idx / self.eps_decay)
+    
+    def get_epsilon(self):
+        print("epsilon:", self.epsilon)
+        return self.epsilon
+
+
+class QNetwork(nn.Module):
+    def __init__(self, act_shape, obs_shape, hidden_size=128):
+        super(QNetwork, self).__init__()
+        
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=2, stride=1, padding=1)
+        self.conv2 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=2, stride=1, padding=1)
+
+        self.flatten1 = nn.Flatten()
+        self.flatten2 = nn.Flatten()
+
+        # Assuming obs_shape[0] is the number of features for the input state
+        flattened_conv_out_size = 68  # This needs to be adjusted based on the actual input and conv output size
+        self.dense1 = nn.Linear(flattened_conv_out_size, 1)
+        self.dense2 = nn.Linear(flattened_conv_out_size, 1)
+
+        # The final input size to the first linear layer should match the combined output size
+        combined_input_size = 6
+        self.linear1 = nn.Linear(combined_input_size, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, hidden_size)
+        self.linear3 = nn.Linear(hidden_size, hidden_size)
+
+        self.output = nn.Linear(hidden_size, act_shape)
+    
+    def forward(self, state):
+        remain = state[:, :params.numEdge].unsqueeze(1)
+        hop = state[:, params.numEdge:params.numEdge*2].unsqueeze(1)
+        taskandfrac = state[:, params.numEdge*2:]
+
+        x1 = F.relu(self.conv1(remain))
+        x2 = F.relu(self.conv2(hop))
+        x1 = self.flatten1(x1)
+        x2 = self.flatten2(x2)
+
+        x1 = F.relu(self.dense1(x1))
+        x2 = F.relu(self.dense2(x2))
+
+        x = torch.cat((x1, x2), dim=1)
+        x = torch.cat((x, taskandfrac), dim=1)  # Combined input for the first linear layer
+
+        x = F.relu(self.linear1(x))
+        x = F.relu(self.linear2(x))
+        x = F.relu(self.linear3(x))
+
+        q_values = self.output(x)
+        
+        return q_values
+
+transition = namedtuple('transition', 'state, next_state, action, reward, is_terminal')
+class replay_buffer:
+    def __init__(self, buffer_size):
+        self.buffer_size = buffer_size
+        self.location = 0
+        self.buffer = []
+
+    def add(self, samples):
+        # Append when the buffer is not full but overwrite when the buffer is full
+        wrap_tensor = lambda x: torch.tensor([x])
+        if len(self.buffer) < self.buffer_size:
+            self.buffer.append(transition(*map(wrap_tensor, samples)))
+        else:
+            self.buffer[self.location] = transition(*map(wrap_tensor, samples))
+
+        # Increment the buffer location
+        self.location = (self.location + 1) % self.buffer_size
+
+    def sample(self, batch_size):
+        return random.sample(self.buffer, batch_size)
+
+class DQN(object):
+    def __init__(self, env):
+        self.action_shape = params.action_dim2
+        self.obs_shape = params.state_dim2
+        self.eval_net, self.target_net = QNetwork(self.action_shape, self.obs_shape).to(device), QNetwork(self.action_shape, self.obs_shape).to(device)
+        self.learn_step_counter = 0                                     # for target updating
+        self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=LR)
+        self.loss_func = nn.MSELoss()
+        self.epsilon_scheduler = EpsilonScheduler(EPSILON_START, EPSILON_END, EPSILON_DECAY)
+        self.updates = 0
+
+    def choose_action(self, x):
+        # x = Variable(torch.unsqueeze(torch.FloatTensor(x), 0)).to(device)
+        x = torch.unsqueeze(torch.FloatTensor(x), 0).to(device)
+        # input only one sample
+        # if np.random.uniform() > EPSILON:   # greedy
+        epsilon = self.epsilon_scheduler.get_epsilon()
+        print("epsilon: ", epsilon)
+        if np.random.uniform() > epsilon:   # greedy
+            actions_value = self.eval_net.forward(x)
+            action = torch.max(actions_value, 1)[1].data.cpu().numpy()[0]     # return the argmax
+            # print(action)
+        else:   # random
+            action = np.random.randint(0, self.action_shape)
+        return action
+
+    def learn(self, sample,):
+        # Batch is a list of namedtuple's, the following operation returns samples grouped by keys
+        batch_samples = transition(*zip(*sample))
+
+        # states, next_states are of tensor (BATCH_SIZE, in_channel, 10, 10) - inline with pytorch NCHW format
+        # actions, rewards, is_terminal are of tensor (BATCH_SIZE, 1)
+        states = torch.cat(batch_samples.state).float().to(device)
+        next_states = torch.cat(batch_samples.next_state).float().to(device)
+        actions = torch.cat(batch_samples.action).to(device)
+        rewards = torch.cat(batch_samples.reward).float().to(device)
+        is_terminal = torch.cat(batch_samples.is_terminal).to(device)
+        # Obtain a batch of Q(S_t, A_t) and compute the forward pass.
+        # Note: policy_network output Q-values for all the actions of a state, but all we need is the A_t taken at time t
+        # in state S_t.  Thus we gather along the columns and get the Q-values corresponds to S_t, A_t.
+        # Q_s_a is of size (BATCH_SIZE, 1).
+        Q = self.eval_net(states) 
+        Q_s_a=Q.gather(1, actions)
+
+        # Obtain max_{a} Q(S_{t+1}, a) of any non-terminal state S_{t+1}.  If S_{t+1} is terminal, Q(S_{t+1}, A_{t+1}) = 0.
+        # Note: each row of the network's output corresponds to the actions of S_{t+1}.  max(1)[0] gives the max action
+        # values in each row (since this a batch).  The detach() detaches the target net's tensor from computation graph so
+        # to prevent the computation of its gradient automatically.  Q_s_prime_a_prime is of size (BATCH_SIZE, 1).
+
+        # Get the indices of next_states that are not terminal
+        none_terminal_next_state_index = torch.tensor([i for i, is_term in enumerate(is_terminal) if is_term == 0], dtype=torch.int64, device=device)
+        # Select the indices of each row
+        none_terminal_next_states = next_states.index_select(0, none_terminal_next_state_index)
+
+        Q_s_prime_a_prime = torch.zeros(len(sample), 1, device=device)
+        if len(none_terminal_next_states) != 0:
+            Q_s_prime_a_prime[none_terminal_next_state_index] = self.target_net(none_terminal_next_states).detach().max(1)[0].unsqueeze(1)
+
+        # Q_s_prime_a_prime = self.target_net(next_states).detach().max(1, keepdim=True)[0]  # this one is simpler regardless of terminal state
+        Q_s_prime_a_prime = (Q_s_prime_a_prime-Q_s_prime_a_prime.mean())/ (Q_s_prime_a_prime.std() + 1e-5)  # normalization
+        
+        # Compute the target
+        target = rewards + GAMMA * Q_s_prime_a_prime
+
+        # Update with loss
+        # loss = self.loss_func(target.detach(), Q_s_a)
+        loss = F.smooth_l1_loss(target.detach(), Q_s_a)
+        # Zero gradients, backprop, update the weights of policy_net
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        self.updates += 1
+        if self.updates % TARGET_UPDATE_INTERVAL == 0:
+            self.update_target()
+
+        return loss.item()
+
+    def save_model(self, model_path=None):
+        torch.save(self.eval_net.state_dict(), 'model/dqn')
+
+    def update_target(self, ):
+        """
+        Update the target model when necessary.
+        """
+        self.target_net.load_state_dict(self.eval_net.state_dict())
+    
+def rollout(env, model):
+    r_buffer = replay_buffer(REPLAY_BUFFER_SIZE)
+    log = []
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    print('\nCollecting experience...')
+    total_step = 0
+    for epi in range(MAX_EPI):
+        s=env.reset()
+        epi_r = 0
+        epi_loss = 0
+        for step in range(MAX_STEP):
+            # env.render()
+            total_step += 1
+            a = model.choose_action(s)
+            s_, r, done, info = env.step(a)
+            # r_buffer.add(torch.tensor([s]), torch.tensor([s_]), torch.tensor([[a]]), torch.tensor([[r]], dtype=torch.float), torch.tensor([[done]]))
+            r_buffer.add([s,s_,[a],[r],[done]])
+            model.epsilon_scheduler.step(total_step)
+            epi_r += r
+            if total_step > REPLAY_START_SIZE and len(r_buffer.buffer) >= BATCH_SIZE:
+                sample = r_buffer.sample(BATCH_SIZE)
+                loss = model.learn(sample)
+                epi_loss += loss
+            if done:
+                break
+            s = s_
+        print('Ep: ', epi, '| Ep_r: ', epi_r, '| Steps: ', step, f'| Ep_Loss: {epi_loss:.4f}', )
+        log.append([epi, epi_r, step])
+        # if epi % SAVE_INTERVAL == 0:
+            # model.save_model()
+            # np.save('log/'+timestamp, log)
+
+if __name__ == '__main__':
+    env = gym.make('CartPole-v1')
+    print(env.observation_space, env.action_space)
+    model = DQN(env)
+    rollout(env, model)

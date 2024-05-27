@@ -86,49 +86,57 @@ class ValueNetwork(nn.Module):
         # x = F.relu(self.linear3(x))
         x = self.linear4(x)
         return x
-        
+    
+import torch.nn as nn
+import torch
+import torch.nn.functional as F
+
 class PolicyNetwork(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_range=1., init_w=3e-3, log_std_min=-20, log_std_max=2):
         super(PolicyNetwork, self).__init__()
-        
+
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max
-        
-        self.linear1 = nn.Linear(num_inputs, hidden_dim)
+
+        # 1D Convolutional layer
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=4, stride=1, padding=0)
+        self.flatten1 = nn.Flatten()
+        self.dense1 = nn.Linear(52, 1)
+        self.linear1 = nn.Linear(4, hidden_dim)  # Adjust input size after convolution
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear3 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear4 = nn.Linear(hidden_dim, hidden_dim)
 
         self.mean_linear = nn.Linear(hidden_dim, num_actions)
-        # implementation 1
+        # Implementation 1
         # self.log_std_linear = nn.Linear(hidden_dim, num_actions)
-        # implementation 2: not dependent on latent features, reference:https://github.com/ikostrikov/pytorch-a2c-ppo-acktr-gail/blob/master/a2c_ppo_acktr/distributions.py
-        self.log_std = AddBias(torch.zeros(num_actions))  
+        # Implementation 2: not dependent on latent features, reference:
+        # https://github.com/ikostrikov/pytorch-a2c-ppo-acktr-gail/blob/master/a2c_ppo_acktr/distributions.py
+        self.log_std = AddBias(torch.zeros(num_actions))
 
         self.num_actions = num_actions
         self.action_range = action_range
 
     def forward(self, state):
-        x = F.relu(self.linear1(state))
+        remain = state[:, :params.numEdge].unsqueeze(1)  # Add channel dimension
+        task = state[:, params.numEdge:params.numEdge+3]
+        # 1D Convolutional layer
+        x1 = F.relu(self.conv1(remain))
+        x1 = self.flatten1(x1)
+        x1 = F.tanh(self.dense1(x1))
+
+        x = torch.cat((x1, task), dim=1)  # Ensure second part is also 2D
+        x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
-        # x = F.relu(self.linear3(x))
-        # x = F.relu(self.linear4(x))
 
-        mean    = self.action_range * F.sigmoid(self.mean_linear(x))
+        mean = self.action_range * torch.sigmoid(self.mean_linear(x))
 
-        # implementation 1
-        # log_std = self.log_std_linear(x)
-        # log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
-    
-        # implementation 2
-        
-        zeros = torch.zeros(mean.size())
-        if state.is_cuda:
-            zeros = zeros.cuda()
+        zeros = torch.zeros(mean.size(), device=state.device)
         log_std = self.log_std(zeros)
-        
+
         return mean, log_std
-        
+
+    
     def get_action(self, state, deterministic=True):
         state = torch.FloatTensor(state).unsqueeze(0).to(device)
         mean, log_std = self.forward(state)
@@ -141,7 +149,7 @@ class PolicyNetwork(nn.Module):
             normal = Normal(mean, std)
             action = normal.sample()
         #action = torch.clamp(action, -self.action_range, self.action_range)
-        print("> PPO state: ", state, "action: ", action)
+        #print("> PPO state: ", state, "action: ", action)
 
         return action.squeeze(0)
 
@@ -150,7 +158,7 @@ class PolicyNetwork(nn.Module):
         return a.numpy()
         
 class PPO(object):
-    def __init__(self, state_dim, action_dim, hidden_dim=512, a_lr=3e-4, c_lr=3e-4):
+    def __init__(self, state_dim, action_dim, hidden_dim=512, a_lr=1e-4, c_lr=3e-4):
         self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.critic = ValueNetwork(state_dim, hidden_dim).to(device)
@@ -237,36 +245,8 @@ class PPO(object):
  
 
     def choose_action(self, s, deterministic=False):
-        # 24.05.22 기록
-        # 이 위치에 remain 정보, hop count 가지고 attention distribution 계산하는 코드 추가
-        # encoded_state = attention distribution + s  (이렇게 해둔걸 global space에도 저장하기)
-        # 위처럼 만든 상태를 아래 get_action에 넣어주기
-        for i in range(params.numEdge):
-            params.remains_lev[i] = int(params.remains[i]/10)
-        print("remains level: ", params.remains_lev)
-
-        print("hopc: ", params.hop_count)
-        key = np.vstack((params.remains, params.hop_count)) # 3x10 크기의 배열
-        query3 = torch.tensor(params.task.reshape(1,3), dtype=torch.float32)
-        query2 = params.task[:2] # 1x3 크기
-        new_query = query2.reshape(1,2)
-
-        key_tensor = torch.tensor(key, dtype=torch.float32)
-        query_tensor = torch.tensor(new_query, dtype=torch.float32)
-        #print(key_tensor.shape, query_tensor.shape)
-
-        scores = torch.matmul(query_tensor, key_tensor)
-        #print(scores.shape)
-
-        attn_weights = nn.functional.softmax(scores, dim=-1)
-        #task_tensor = torch.tensor(params.task, dtype=torch.float32)
-        print("attention distribution: ", attn_weights)
-        #encoded_state = torch.cat((attn_weights, query3), dim=1)
-        #print(encoded_state)
-        params.state1 = attn_weights
-        
-        action1 = self.actor.get_action(attn_weights, deterministic=True)
-        return attn_weights.detach().cpu().numpy(), action1.detach().cpu().numpy()
+        action1 = self.actor.get_action(s, deterministic=True)
+        return action1.detach().cpu().numpy()
     
     def get_v(self, s):
         s = s.astype(np.float32)

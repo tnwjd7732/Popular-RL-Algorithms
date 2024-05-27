@@ -9,27 +9,28 @@ task = np.zeros(3)
 '''model path'''
 sac_path = './model/sac'
 ppo_path = './model/ppo'
-sac_interval  = 10
+sac_interval  = 199
 
 '''training parameters'''
 EPS=1000
 STEP = 10
-sac_batch = 512
-update_itr = 1
-ppo_batch = 128
+sac_batch = 128
+dqn_batch = 4
+update_itr = 199
+ppo_batch = 512
 GAMMA = 0.99
 ''''''
 numEdge = 16
-numVeh = 5
+numVeh = 20
 
 
 '''global state'''
-state1 = np.zeros(numEdge) 
-state2 = np.zeros(numEdge+1)
+state1 = np.zeros(numEdge+3) 
+state2 = np.zeros(numEdge*2+3+1)
 
 '''state, action dimension'''
-state_dim1 = numEdge  #ppo
-state_dim2 = numEdge+1 #ppo
+state_dim1 = numEdge+3  #ppo
+state_dim2 = numEdge*2+3+1#ppo
 action_dim1 = 1 #sac
 action_dim2 = numEdge #sac
 hidden_dim = 128
@@ -51,8 +52,8 @@ min_size = 0.1  * Byte
 max_size = 1  * Byte
 min_cpu = 0.1 
 max_cpu = 1 
-min_time = 0.1
-max_time = 5
+min_time = 1
+max_time = 3
 unitprice_size = 1 # 차량 지불 함수에서 가중치
 unitprice_cpu = 1 # 차량 지불 함수에서 가중치
 wcomp = 1 # 소모 함수에서 가중치

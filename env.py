@@ -54,6 +54,10 @@ class Env():
                         param.remains[int(self.allo_loc[i])] += self.alloRes_loc[i]
                         param.remains[int(self.allo_neighbor[i])] +=self.alloRes_neighbor[i]
 
+        for i in range(params.numEdge):
+            params.remains_lev[i] = int(params.remains[i]/10)
+        print("remains level: ", params.remains_lev)       
+
         ''' 작업 초기화 '''
         self.taskInfo[0] = np.random.uniform(param.min_size, param.max_size)
         self.taskInfo[1] = np.random.uniform(param.min_cpu, param.max_cpu)
@@ -70,7 +74,8 @@ class Env():
         self.nearest = self.find_closest_rsu(self.mobilityInfo[:2])
         self.calculate_hopcount2(param.edge_pos[int(self.nearest)])
 
-        return self.taskInfo
+        state = np.concatenate((param.remains_lev, self.taskInfo))
+        return state
 
     def step(self, action1, action2, stepnum):
         #action1: offloading fraction (0~1) from ppo (continous)
@@ -84,10 +89,14 @@ class Env():
         local_amount = taskcpu * action1 
         off_amount = taskcpu * (1-action1)
         #print("fraction: ", action1, ", local: ", local_amount, "Gigacycle, offload: ", off_amount, "Gigacycle")
+        optimal_resource_loc =local_amount/tasktime #state[5] = required CPU cycles, state[6] = time deadline
+        optimal_resource_loc = min(param.remains[self.nearest], optimal_resource_loc*1.2)
+        optimal_resource_off = off_amount/tasktime #state[5] = required CPU cycles, state[6] = time deadline
+        optimal_resource_off = min(param.remains[int(action2)], optimal_resource_off*1.2)
 
         # 2. local computing time 계산
         # 2.1 Tloc = computing time (우선 모든 자원 - remains 다 할당한다고 가정하고 코드 짜기) version 1
-        Tloc = local_amount/param.remains[self.nearest]
+        Tloc = local_amount/optimal_resource_loc
         # 3. offloading time 계산
         # 3.1 transmission delay 계산 (hop count 가지고 init -> comp까지)
         
@@ -95,7 +104,9 @@ class Env():
         bandwidth = np.random.uniform(0.07, 0.1)
         Ttrans = (tasksize*(1-action1))/(bandwidth*1000)*hopcount
         # 3.2 computing delay 계산
-        Tcomp = off_amount/param.remains[int(action2)]
+       
+
+        Tcomp = off_amount/optimal_resource_off
         # 3.3 Toff = trans +  comp
         Toff = Ttrans + Tcomp
 
@@ -105,26 +116,40 @@ class Env():
 
         # 5. 성공 여부 체크 
         if tasktime < Ttotal:
-            print("failue")
-            reward = -1
+            print("failue - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff)
+            reward = 0
+            r1= -1
+            r2 = -1
+            if math.isinf(Ttotal):
+                if math.isinf(Tloc): #partial 결정 틀린 것
+                    r1=-5
+                    #r2=0
+                if math.isinf(Toff): #decision 잘못 내린 것
+                    #r1=0
+                    r2=-5
+            else:
+                r1 = -2*abs(Tloc-Toff)
+           
             self.taskEnd[stepnum] = tasktime #실패한 경우 할당받은 자원 사용 시간 = latency 요구사항
         else:
-            print("success")
-            reward = 0
+            print("success - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff)
+            reward = 1
+            r1 = 1 - min(abs(Tloc-Toff), 0.9)
+            r2 = 1
             self.taskEnd[stepnum] = Ttotal
 
         self.allo_loc[stepnum] = self.nearest
         self.allo_neighbor[stepnum] = action2
 
-        self.alloRes_loc[stepnum]= param.remains[self.nearest]
-        self.alloRes_neighbor[stepnum]= param.remains[int(action2)]
+        self.alloRes_loc[stepnum]=optimal_resource_loc
+        self.alloRes_neighbor[stepnum]= optimal_resource_off
 
         # 6. reward 계산
         profit = taskcpu*param.unitprice_cpu + tasksize*param.unitprice_size
         
         energy_coeff = 10 ** -26 # effective energy coefficient
-        cost_comp1 = energy_coeff * param.remains[self.nearest] ** 2 * taskcpu*action1 #local에서 연산하려고 사용한 에너지 소모량
-        cost_comp2 = energy_coeff * param.remains[int(action2)] ** 2* taskcpu*(1-action1) #neighbor에서 연산하려고 사용한 에너지 소모량
+        cost_comp1 = energy_coeff * optimal_resource_loc ** 2 * taskcpu*action1 #local에서 연산하려고 사용한 에너지 소모량
+        cost_comp2 = energy_coeff * optimal_resource_off ** 2* taskcpu*(1-action1) #neighbor에서 연산하려고 사용한 에너지 소모량
         cost_comp = param.wcomp*cost_comp1+cost_comp2
         cost_trans = param.wtrans*(1-action1)*tasksize*hopcount
         cost = cost_comp + cost_trans
@@ -134,29 +159,16 @@ class Env():
     
         #print(reward)
         # 7. 서버들 가용 자원량 조정 (위에서 할당한 만큼 빼는 것)
-        param.remains[self.nearest] -= param.remains[self.nearest]
-        param.remains[int(action2)] -= param.remains[int(action2)]
+        param.remains[self.nearest] -= optimal_resource_loc
+        param.remains[int(action2)] -= optimal_resource_off
 
         done = False
-        new_task = self.reset(stepnum)
-        key = np.vstack((params.remains, params.hop_count, params.temp)) # 3x10 크기의 배열
-        query = new_task # 1x3 크기
-        new_query = query.reshape(1,3)
+        new_state1 = self.reset(stepnum)
 
-        key_tensor = torch.tensor(key, dtype=torch.float32)
-        query_tensor = torch.tensor(new_query, dtype=torch.float32)
-        #print(key_tensor.shape, query_tensor.shape)
-
-        scores = torch.matmul(query_tensor, key_tensor)
-        #print(scores.shape)
-
-        attn_weights = nn.functional.softmax(scores, dim=-1)
-        #task_tensor = torch.tensor(params.task, dtype=torch.float32)
-
-        new_state1 = attn_weights
-        new_state2 = np.concatenate((new_state1.reshape(-1), action1.reshape(-1)), axis=-1)
+       
+        new_state2 = np.concatenate((params.remains_lev, params.hop_count, params.task, action1))
         
-        return new_state1, new_state2, reward, done
+        return new_state1, new_state2, reward, r1, r2, done
 
     def calculate_hopcount (self, mob1, mob2):
         diffx = abs(mob1[0] - mob2[0]) / param.radius*2
