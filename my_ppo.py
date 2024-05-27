@@ -141,6 +141,8 @@ class PolicyNetwork(nn.Module):
             normal = Normal(mean, std)
             action = normal.sample()
         #action = torch.clamp(action, -self.action_range, self.action_range)
+        print("> PPO state: ", state, "action: ", action)
+
         return action.squeeze(0)
 
     def sample_action(self,):
@@ -239,9 +241,15 @@ class PPO(object):
         # 이 위치에 remain 정보, hop count 가지고 attention distribution 계산하는 코드 추가
         # encoded_state = attention distribution + s  (이렇게 해둔걸 global space에도 저장하기)
         # 위처럼 만든 상태를 아래 get_action에 넣어주기
-        key = np.vstack((params.remains, params.hop_count, params.temp)) # 3x10 크기의 배열
-        query = params.task # 1x3 크기
-        new_query = query.reshape(1,3)
+        for i in range(params.numEdge):
+            params.remains_lev[i] = int(params.remains[i]/10)
+        print("remains level: ", params.remains_lev)
+
+        print("hopc: ", params.hop_count)
+        key = np.vstack((params.remains, params.hop_count)) # 3x10 크기의 배열
+        query3 = torch.tensor(params.task.reshape(1,3), dtype=torch.float32)
+        query2 = params.task[:2] # 1x3 크기
+        new_query = query2.reshape(1,2)
 
         key_tensor = torch.tensor(key, dtype=torch.float32)
         query_tensor = torch.tensor(new_query, dtype=torch.float32)
@@ -252,13 +260,13 @@ class PPO(object):
 
         attn_weights = nn.functional.softmax(scores, dim=-1)
         #task_tensor = torch.tensor(params.task, dtype=torch.float32)
-
-        encoded_state = torch.cat((attn_weights, query_tensor), dim=1)
+        print("attention distribution: ", attn_weights)
+        #encoded_state = torch.cat((attn_weights, query3), dim=1)
         #print(encoded_state)
-        params.state1 = encoded_state
+        params.state1 = attn_weights
         
-        action1 = self.actor.get_action(encoded_state, deterministic=True)
-        return encoded_state.detach().cpu().numpy(), action1.detach().cpu().numpy()
+        action1 = self.actor.get_action(attn_weights, deterministic=True)
+        return attn_weights.detach().cpu().numpy(), action1.detach().cpu().numpy()
     
     def get_v(self, s):
         s = s.astype(np.float32)

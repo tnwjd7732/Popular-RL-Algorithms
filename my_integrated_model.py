@@ -55,9 +55,11 @@ if __name__ == '__main__':
             state1 =  env.reset(-1)
             episode_reward = 0
             t0 = time.time()
-            print("\n\n\n new episode")
+            #print("\n\n\n new episode")
             
-            for step in range(params.STEP):
+            for step in range(params.STEP*params.numVeh):
+                #print("remains: ", params.remains)
+
                 #print("EPS: ", eps, "STEP: ", step)
                 #state1: task info만 담겨있음
                 #ppo에서 server info 바탕으로 attention distribution 만든거랑 task info 합쳐서 encoded_state로 리턴 (이게 곧 real state)
@@ -67,34 +69,33 @@ if __name__ == '__main__':
                 
                 # epsilon greedy
                 random_number = random.uniform(0, 1)
-                print("epsilon: ", epsilon, "random: ", random_number)
+                #print("epsilon: ", epsilon, "random: ", random_number)
                 if epsilon > random_number:
-                    print("Random action")
+                    #print("Random action")
                     action2 = random.randint(0, params.numEdge-1)
                 else:
-                    print("Greedy action")
+                    #print("Greedy action")
                     action2 = sac_trainer.policy_net.get_action(state2, deterministic = True) # state2로 sac output (offloading decision) 만들기
                 epsilon = epsilon * 0.9999
-                s_, r, done = env.step(action1, action2, step) # 두개의 action 가지고 step
+                s1_, s2_, r, done = env.step(action1, action2, step) # 두개의 action 가지고 step
                 
-                print("remains: ", params.remains)
-                print("action1: ", action1)
-                print("action2: ", action2)
+                #print("action1: ", action1)
+                #print("action2: ", action2)
                 
                 '''방금의 경험을 각각의 버퍼에 기록하는 과정'''
                 buffer['state'].append(encoded_state1)
                 buffer['action'].append(action1)
                 buffer['reward'].append(r) 
                 buffer['done'].append(done) 
-                replay_buffer.push(state2, action2, r, s_, done)
+                replay_buffer.push(state2, action2, r, s2_, done)
 
                 '''상태 전이, 보상 누적'''
-                s = s_
+                s = s2_
                 episode_reward += r         
                 
                 # update SAC
                 if len(replay_buffer) > params.sac_batch and step % params.sac_interval ==0:
-                    print("update SAC")
+                    #print("update SAC")
                     for i in range(params.update_itr):
                         _=sac_trainer.update(params.sac_batch, reward_scale=1., auto_entropy=True, target_entropy=-2)
 
@@ -103,11 +104,11 @@ if __name__ == '__main__':
 
                 # update PPO
                 if (step + 1) % params.ppo_batch== 0:
-                    print("update PPO")
+                    #print("update PPO")
                     if done:
                         v_s_=0
                     else:
-                        v_s_ = ppo.get_v(s_)[0]
+                        v_s_ = ppo.get_v(s1_.numpy())[0]
                     discounted_r = []
                     for r, d in zip(buffer['reward'][::-1], buffer['done'][::-1]):
                         v_s_ = r + params.GAMMA * v_s_ * (1-d)
@@ -121,7 +122,7 @@ if __name__ == '__main__':
                 if done:
                     break
 
-            if eps % 20 == 0 and eps>0: # plot and model saving interval
+            if eps % 5 == 0 and eps>0: # plot and model saving interval
                 plot(rewards)
                 np.save('rewards', rewards)
                 sac_trainer.save_model(params.sac_path)

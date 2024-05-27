@@ -107,6 +107,7 @@ class PolicyNetwork(nn.Module):
             action = np.argmax(probs.detach().cpu().numpy())
         else:
             action = dist.sample().squeeze().detach().cpu().numpy()
+        print(">> SAC state: ", state, "action: ", action)
         return action
 
 
@@ -132,7 +133,7 @@ class SAC_Trainer():
         self.soft_q_criterion2 = nn.MSELoss()
 
         soft_q_lr = 3e-4
-        policy_lr = 3e-4
+        policy_lr = 3e-1
         alpha_lr  = 3e-4
 
         self.soft_q_optimizer1 = optim.Adam(self.soft_q_net1.parameters(), lr=soft_q_lr)

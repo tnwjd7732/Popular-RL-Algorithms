@@ -13,30 +13,31 @@ sac_interval  = 10
 
 '''training parameters'''
 EPS=1000
-STEP = 50
-sac_batch = 128
+STEP = 10
+sac_batch = 512
 update_itr = 1
 ppo_batch = 128
 GAMMA = 0.99
 ''''''
 numEdge = 16
-numVeh = 10
-maxStep = 50
+numVeh = 5
 
 
 '''global state'''
-state1 = np.zeros(numEdge+3) 
-state2 = np.zeros(numEdge+3+1)
+state1 = np.zeros(numEdge) 
+state2 = np.zeros(numEdge+1)
 
 '''state, action dimension'''
-state_dim1 = numEdge+3  #ppo
-state_dim2 = numEdge+3+1 #ppo
+state_dim1 = numEdge  #ppo
+state_dim2 = numEdge+1 #ppo
 action_dim1 = 1 #sac
 action_dim2 = numEdge #sac
 hidden_dim = 128
 
 '''edge server resources'''
 remains = np.zeros(numEdge)
+remains_lev = np.zeros(numEdge)
+
 hop_count = np.zeros(numEdge)
 temp = np.zeros(numEdge)
 

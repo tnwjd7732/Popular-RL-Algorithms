@@ -15,11 +15,11 @@ class Env():
         
         self.taskInfo = np.zeros(3)
         self.mobilityInfo = np.zeros(4)
-        self.taskEnd = np.zeros(self.numVeh * param.maxStep) # 처리 완료까지 남은 시간 기록
-        self.alloRes_loc = np.zeros(self.numVeh * param.maxStep) # local에서 할당받은 자원량 기록
-        self.alloRes_neighbor = np.zeros(self.numVeh * param.maxStep) # offload 서버에게 빌려온 자원량 기록
-        self.allo_loc = np.zeros(self.numVeh * param.maxStep)  # local 서버 번호 기록
-        self.allo_neighbor = np.zeros(self.numVeh * param.maxStep) # offload한 서버 번호 기록
+        self.taskEnd = np.zeros(self.numVeh * param.STEP) # 처리 완료까지 남은 시간 기록
+        self.alloRes_loc = np.zeros(self.numVeh * param.STEP) # local에서 할당받은 자원량 기록
+        self.alloRes_neighbor = np.zeros(self.numVeh * param.STEP) # offload 서버에게 빌려온 자원량 기록
+        self.allo_loc = np.zeros(self.numVeh * param.STEP)  # local 서버 번호 기록
+        self.allo_neighbor = np.zeros(self.numVeh * param.STEP) # offload한 서버 번호 기록
 
     def random_list(self, size, target_mean, target_std):
         random_values = []
@@ -68,6 +68,7 @@ class Env():
 
         ''' 차량 가장 가까운 edge server 찾기 '''
         self.nearest = self.find_closest_rsu(self.mobilityInfo[:2])
+        self.calculate_hopcount2(param.edge_pos[int(self.nearest)])
 
         return self.taskInfo
 
@@ -104,11 +105,11 @@ class Env():
 
         # 5. 성공 여부 체크 
         if tasktime < Ttotal:
-            #print("failue")
+            print("failue")
             reward = -1
             self.taskEnd[stepnum] = tasktime #실패한 경우 할당받은 자원 사용 시간 = latency 요구사항
         else:
-            #print("success")
+            print("success")
             reward = 0
             self.taskEnd[stepnum] = Ttotal
 
@@ -152,14 +153,25 @@ class Env():
         attn_weights = nn.functional.softmax(scores, dim=-1)
         #task_tensor = torch.tensor(params.task, dtype=torch.float32)
 
-        encoded_state = torch.cat((attn_weights, query_tensor), dim=1)
-        new_state = np.concatenate((encoded_state.reshape(-1), action1.reshape(-1)), axis=-1)
+        new_state1 = attn_weights
+        new_state2 = np.concatenate((new_state1.reshape(-1), action1.reshape(-1)), axis=-1)
         
-        return new_state, reward, done
+        return new_state1, new_state2, reward, done
 
     def calculate_hopcount (self, mob1, mob2):
         diffx = abs(mob1[0] - mob2[0]) / param.radius*2
         diffy = abs(mob1[1] - mob2[1]) / param.radius*2
         hop = diffx+diffy
+        return hop
+    
+    def calculate_hopcount2 (self, mob1):
+        for i in range(param.numEdge):
+            diffx = abs(mob1[0] - param.edge_pos[i][0]) / (param.radius*2)
+            diffy = abs(mob1[1] - param.edge_pos[i][1]) / (param.radius*2)
+            hop = diffx+diffy
+            param.hop_count[i] = 6 - hop 
+
+            # hop_count task i가 생성된 nearest 서버로부터 클러스터 내 모든 엣지 서버와의 hop count를 기록하는 것 
+            # ex) hop_count[1]의 의미: nearest 서버 <-> 서버 1과의 홉 카운트
         return hop
         
