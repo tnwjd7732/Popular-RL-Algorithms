@@ -18,17 +18,23 @@ SAVE_INTERVAL = 20
 TARGET_UPDATE_INTERVAL = 20
 
 BATCH_SIZE = 128
-REPLAY_BUFFER_SIZE = 1000
-REPLAY_START_SIZE = 200
+REPLAY_BUFFER_SIZE = 10000
+REPLAY_START_SIZE = 2000
 
 GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
 EPSILON_START = 1.
 EPSILON_END = 0.0005
 EPSILON_DECAY = 10000
-LR = 1e-2
+LR = 1e-4
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device_idx = 0
+if params.GPU:
+    device = torch.device("mps")
+    #device = torch.device("cuda:" + str(device_idx) if torch.cuda.is_available() else "cpu")
+else:
+    device = torch.device("cpu")
+print("Device: ", device)
 
 class EpsilonScheduler():
     def __init__(self, eps_start, eps_final, eps_decay):
@@ -58,7 +64,7 @@ class EpsilonScheduler():
         self.epsilon = self.eps_final + (self.eps_start - self.eps_final) * math.exp(-1. * delta_frame_idx / self.eps_decay)
     
     def get_epsilon(self):
-        print("epsilon:", self.epsilon)
+        #print("epsilon:", self.epsilon)
         return self.epsilon
 
 
@@ -66,17 +72,17 @@ class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
         super(QNetwork, self).__init__()
         
-        self.conv1 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=2, stride=1, padding=1)
-        self.conv2 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=2, stride=1, padding=1)
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=1, stride=1, padding=1)
+        self.conv2 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=1, stride=1, padding=1)
 
         self.flatten1 = nn.Flatten()
         self.flatten2 = nn.Flatten()
 
         # Assuming obs_shape[0] is the number of features for the input state
-        flattened_conv_out_size = 68  # This needs to be adjusted based on the actual input and conv output size
+        flattened_conv_out_size = 288  # This needs to be adjusted based on the actual input and conv output size
         self.dense1 = nn.Linear(flattened_conv_out_size, 1)
         self.dense2 = nn.Linear(flattened_conv_out_size, 1)
-
+        
         # The final input size to the first linear layer should match the combined output size
         combined_input_size = 6
         self.linear1 = nn.Linear(combined_input_size, hidden_size)
@@ -86,6 +92,7 @@ class QNetwork(nn.Module):
         self.output = nn.Linear(hidden_size, act_shape)
     
     def forward(self, state):
+        
         remain = state[:, :params.numEdge].unsqueeze(1)
         hop = state[:, params.numEdge:params.numEdge*2].unsqueeze(1)
         taskandfrac = state[:, params.numEdge*2:]
@@ -97,10 +104,10 @@ class QNetwork(nn.Module):
 
         x1 = F.relu(self.dense1(x1))
         x2 = F.relu(self.dense2(x2))
-
+        
         x = torch.cat((x1, x2), dim=1)
         x = torch.cat((x, taskandfrac), dim=1)  # Combined input for the first linear layer
-
+        
         x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
         x = F.relu(self.linear3(x))
@@ -147,7 +154,7 @@ class DQN(object):
         # input only one sample
         # if np.random.uniform() > EPSILON:   # greedy
         epsilon = self.epsilon_scheduler.get_epsilon()
-        print("epsilon: ", epsilon)
+        #print("epsilon: ", epsilon)
         if np.random.uniform() > epsilon:   # greedy
             actions_value = self.eval_net.forward(x)
             action = torch.max(actions_value, 1)[1].data.cpu().numpy()[0]     # return the argmax

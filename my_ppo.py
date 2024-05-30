@@ -46,13 +46,13 @@ METHOD = [
 ###############################  PPO  ####################################
 
 
-GPU = True
 device_idx = 0
-if GPU:
-    device = torch.device("cuda:" + str(device_idx) if torch.cuda.is_available() else "cpu")
+if params.GPU:
+    device = torch.device("mps")
+    #device = torch.device("cuda:" + str(device_idx) if torch.cuda.is_available() else "cpu")
 else:
     device = torch.device("cpu")
-print(device)
+print("Device: ", device)
 
 class AddBias(nn.Module):
     def __init__(self, bias):
@@ -158,7 +158,7 @@ class PolicyNetwork(nn.Module):
         return a.numpy()
         
 class PPO(object):
-    def __init__(self, state_dim, action_dim, hidden_dim=512, a_lr=1e-4, c_lr=3e-4):
+    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=1e-4, c_lr=3e-4):
         self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.critic = ValueNetwork(state_dim, hidden_dim).to(device)
@@ -168,6 +168,20 @@ class PPO(object):
 
     def a_train(self, s, a, adv):
         mu, log_std = self.actor(s)
+        
+        # log_std의 값을 적절한 범위로 제한
+        log_std = torch.clamp(log_std, min=-20, max=2)
+        
+        # mu와 log_std에 nan 값이 없는지 확인
+        if torch.isnan(mu).any() or torch.isinf(mu).any():
+            print("Invalid mu detected: ", mu)
+            raise ValueError("mu contains nan or inf values")
+        
+        if torch.isnan(log_std).any() or torch.isinf(log_std).any():
+            print("Invalid log_std detected: ", log_std)
+            raise ValueError("log_std contains nan or inf values")
+        
+        # Normal 분포 생성
         pi = Normal(mu, torch.exp(log_std))
 
         mu_old, log_std_old = self.actor_old(s)

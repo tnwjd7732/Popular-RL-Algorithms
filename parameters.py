@@ -6,6 +6,8 @@ Mega = 1000 * Kilo
 Giga = 1000 * Mega 
 task = np.zeros(3)
 
+GPU = True
+
 '''model path'''
 sac_path = './model/sac'
 ppo_path = './model/ppo'
@@ -15,13 +17,13 @@ sac_interval  = 199
 EPS=1000
 STEP = 10
 sac_batch = 128
-dqn_batch = 4
+dqn_batch = 64
 update_itr = 199
 ppo_batch = 512
 GAMMA = 0.99
 ''''''
 numEdge = 16
-numVeh = 20
+numVeh = 100
 
 
 '''global state'''
@@ -42,7 +44,7 @@ remains_lev = np.zeros(numEdge)
 hop_count = np.zeros(numEdge)
 temp = np.zeros(numEdge)
 
-resource_avg = 50
+resource_avg = 20
 resource_std = 20
 
 '''clustering params'''
@@ -51,8 +53,8 @@ resource_std = 20
 min_size = 0.1  * Byte
 max_size = 1  * Byte
 min_cpu = 0.1 
-max_cpu = 1 
-min_time = 1
+max_cpu = 3
+min_time = 0.5
 max_time = 3
 unitprice_size = 1 # 차량 지불 함수에서 가중치
 unitprice_cpu = 1 # 차량 지불 함수에서 가중치

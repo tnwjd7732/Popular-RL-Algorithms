@@ -56,7 +56,7 @@ class Env():
 
         for i in range(params.numEdge):
             params.remains_lev[i] = int(params.remains[i]/10)
-        print("remains level: ", params.remains_lev)       
+        #print("remains level: ", params.remains_lev)       
 
         ''' 작업 초기화 '''
         self.taskInfo[0] = np.random.uniform(param.min_size, param.max_size)
@@ -80,7 +80,7 @@ class Env():
     def step(self, action1, action2, stepnum):
         #action1: offloading fraction (0~1) from ppo (continous)
         #action2: offloading decision (0~N) from sac (discrete)
-
+       
         # 1. offloading fraction에 따라 local computing량과 offloading computing량 계산
         tasksize = param.task[0]
         taskcpu = param.task[1]
@@ -90,9 +90,9 @@ class Env():
         off_amount = taskcpu * (1-action1)
         #print("fraction: ", action1, ", local: ", local_amount, "Gigacycle, offload: ", off_amount, "Gigacycle")
         optimal_resource_loc =local_amount/tasktime #state[5] = required CPU cycles, state[6] = time deadline
-        optimal_resource_loc = min(param.remains[self.nearest], optimal_resource_loc*1.2)
+        optimal_resource_loc = min(param.remains[self.nearest], optimal_resource_loc*1.5)
         optimal_resource_off = off_amount/tasktime #state[5] = required CPU cycles, state[6] = time deadline
-        optimal_resource_off = min(param.remains[int(action2)], optimal_resource_off*1.2)
+        optimal_resource_off = min(param.remains[int(action2)], optimal_resource_off*1.5)
 
         # 2. local computing time 계산
         # 2.1 Tloc = computing time (우선 모든 자원 - remains 다 할당한다고 가정하고 코드 짜기) version 1
@@ -113,29 +113,31 @@ class Env():
         # 4. local과 off 중 더 긴 시간을 최종 Ttotal로 결정
         #print("Tloc: ", Tloc, "Toff: ", Toff)
         Ttotal = max(Tloc, Toff)
-
+        #print("  size: ", tasksize, "cpu: ", taskcpu, "latency: ", tasktime)
         # 5. 성공 여부 체크 
         if tasktime < Ttotal:
-            print("failue - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff)
+            print("\n----> Fraction: ", action1)
+            print("----> MyId: ", self.nearest,"(lev:", param.remains_lev[self.nearest], "-", (1-action1), ") Offloading: ", action2, "(lev:", param.remains_lev[int(action2)], "-", action1, ")")
+            print("Failue - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff, "hopcnt: ", hopcount)
             reward = 0
-            r1= -1
-            r2 = -1
+            r1 = 0
+            r2 = 0
             if math.isinf(Ttotal):
-                if math.isinf(Tloc): #partial 결정 틀린 것
-                    r1=-5
-                    #r2=0
-                if math.isinf(Toff): #decision 잘못 내린 것
-                    #r1=0
-                    r2=-5
-            else:
-                r1 = -2*abs(Tloc-Toff)
-           
+                if math.isinf(Tloc):
+                    r1 = -5
+                if math.isinf(Toff):
+                    r2 = -5
+                if Tloc > tasktime:
+                    r1 = -1
+                if Toff > tasktime:
+                    r2 = -1
             self.taskEnd[stepnum] = tasktime #실패한 경우 할당받은 자원 사용 시간 = latency 요구사항
         else:
-            print("success - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff)
+            #print("Success - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff)
             reward = 1
-            r1 = 1 - min(abs(Tloc-Toff), 0.9)
-            r2 = 1
+            r1 = 2 - min(abs(Tloc-Toff), 0.9)+(tasktime-Ttotal)*2
+            #print("latency-total:", tasktime-Ttotal)
+            r2 = 3
             self.taskEnd[stepnum] = Ttotal
 
         self.allo_loc[stepnum] = self.nearest
@@ -171,8 +173,8 @@ class Env():
         return new_state1, new_state2, reward, r1, r2, done
 
     def calculate_hopcount (self, mob1, mob2):
-        diffx = abs(mob1[0] - mob2[0]) / param.radius*2
-        diffy = abs(mob1[1] - mob2[1]) / param.radius*2
+        diffx = abs(mob1[0] - mob2[0]) / (param.radius*2)
+        diffy = abs(mob1[1] - mob2[1]) / (param.radius*2)
         hop = diffx+diffy
         return hop
     
