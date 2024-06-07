@@ -52,7 +52,7 @@ if params.GPU:
     #device = torch.device("cuda:" + str(device_idx) if torch.cuda.is_available() else "cpu")
 else:
     device = torch.device("cpu")
-print("Device: ", device)
+print("PPO Device: ", device)
 
 class AddBias(nn.Module):
     def __init__(self, bias):
@@ -87,10 +87,6 @@ class ValueNetwork(nn.Module):
         x = self.linear4(x)
         return x
     
-import torch.nn as nn
-import torch
-import torch.nn.functional as F
-
 class PolicyNetwork(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_range=1., init_w=3e-3, log_std_min=-20, log_std_max=2):
         super(PolicyNetwork, self).__init__()
@@ -101,7 +97,7 @@ class PolicyNetwork(nn.Module):
         # 1D Convolutional layer
         self.conv1 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=4, stride=1, padding=0)
         self.flatten1 = nn.Flatten()
-        self.dense1 = nn.Linear(52, 1)
+        self.dense1 = nn.Linear(28, 1)
         self.linear1 = nn.Linear(4, hidden_dim)  # Adjust input size after convolution
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear3 = nn.Linear(hidden_dim, hidden_dim)
@@ -118,8 +114,9 @@ class PolicyNetwork(nn.Module):
         self.action_range = action_range
 
     def forward(self, state):
-        remain = state[:, :params.numEdge].unsqueeze(1)  # Add channel dimension
-        task = state[:, params.numEdge:params.numEdge+3]
+        remain = state[:, :params.maxEdge].unsqueeze(1) 
+        task = state[:, params.maxEdge:params.maxEdge+3]
+
         # 1D Convolutional layer
         x1 = F.relu(self.conv1(remain))
         x1 = self.flatten1(x1)
@@ -138,9 +135,10 @@ class PolicyNetwork(nn.Module):
 
     
     def get_action(self, state, deterministic=True):
+        '''mps로 device 설정하니까 여기서 커널 죽음'''
         state = torch.FloatTensor(state).unsqueeze(0).to(device)
         mean, log_std = self.forward(state)
-
+        print(state)
         if deterministic:
             action = mean
             #print(action)
@@ -148,7 +146,7 @@ class PolicyNetwork(nn.Module):
             std = log_std.exp()
             normal = Normal(mean, std)
             action = normal.sample()
-        #action = torch.clamp(action, -self.action_range, self.action_range)
+        action = torch.clamp(action, 0, self.action_range)
         #print("> PPO state: ", state, "action: ", action)
 
         return action.squeeze(0)
@@ -158,7 +156,7 @@ class PolicyNetwork(nn.Module):
         return a.numpy()
         
 class PPO(object):
-    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=1e-4, c_lr=3e-4):
+    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=1e-5, c_lr=3e-5):
         self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.critic = ValueNetwork(state_dim, hidden_dim).to(device)
@@ -258,7 +256,7 @@ class PPO(object):
         self.update_old_pi()
  
 
-    def choose_action(self, s, deterministic=False):
+    def choose_action(self, s, deterministic=True):
         action1 = self.actor.get_action(s, deterministic=True)
         return action1.detach().cpu().numpy()
     

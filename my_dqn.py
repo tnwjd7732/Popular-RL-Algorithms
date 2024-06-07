@@ -34,7 +34,7 @@ if params.GPU:
     #device = torch.device("cuda:" + str(device_idx) if torch.cuda.is_available() else "cpu")
 else:
     device = torch.device("cpu")
-print("Device: ", device)
+print("DQN Device: ", device)
 
 class EpsilonScheduler():
     def __init__(self, eps_start, eps_final, eps_decay):
@@ -72,14 +72,14 @@ class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
         super(QNetwork, self).__init__()
         
-        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=1, stride=1, padding=1)
-        self.conv2 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=1, stride=1, padding=1)
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=1, stride=1, padding=0)
+        self.conv2 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=1, stride=1, padding=0)
 
         self.flatten1 = nn.Flatten()
         self.flatten2 = nn.Flatten()
 
         # Assuming obs_shape[0] is the number of features for the input state
-        flattened_conv_out_size = 288  # This needs to be adjusted based on the actual input and conv output size
+        flattened_conv_out_size = 160  # This needs to be adjusted based on the actual input and conv output size
         self.dense1 = nn.Linear(flattened_conv_out_size, 1)
         self.dense2 = nn.Linear(flattened_conv_out_size, 1)
         
@@ -93,9 +93,9 @@ class QNetwork(nn.Module):
     
     def forward(self, state):
         
-        remain = state[:, :params.numEdge].unsqueeze(1)
-        hop = state[:, params.numEdge:params.numEdge*2].unsqueeze(1)
-        taskandfrac = state[:, params.numEdge*2:]
+        remain = state[:, :params.maxEdge].unsqueeze(1)
+        hop = state[:, params.maxEdge:params.maxEdge*2].unsqueeze(1)
+        taskandfrac = state[:, params.maxEdge*2:]
 
         x1 = F.relu(self.conv1(remain))
         x2 = F.relu(self.conv2(hop))

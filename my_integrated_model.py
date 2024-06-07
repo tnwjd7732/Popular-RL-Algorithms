@@ -11,16 +11,20 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import random
 import my_dqn
+import math
+import clustering 
+import sys
 
 replay_buffer_size = 1e6
 #replay_buffer = my_sac.ReplayBuffer_SAC(replay_buffer_size)
 replay_buffer = my_dqn.replay_buffer(replay_buffer_size)
 
 env = environment.Env()
+cluster = clustering.Clustering()
 
 ppo = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim) # continous model (offloading fraction - model1)
-sac_trainer=my_sac.SAC_Trainer(replay_buffer, hidden_dim=params.hidden_dim, state_dim=params.state_dim2, action_dim=params.action_dim2) # discrete model (offloading action - model2)
 dqn = my_dqn.DQN(env)
+clst = clustering.Clustering()
 
 
 parser = argparse.ArgumentParser(description='Train or test neural net motor controller.')
@@ -30,26 +34,43 @@ parser.add_argument('--test', dest='test', action='store_true', default=False)
 args = parser.parse_args()
 rewards     = []
 losses = []
+action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-def plot(rewards, losses):
+def plot():
     clear_output(True)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 5))
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
 
-    # 첫 번째 서브플롯에 rewards를 그림
+    # 첫번째 서브플롯에 rewards
     ax1.plot(rewards)
     ax1.set_title('Rewards')
     ax1.set_xlabel('Episode')
     ax1.set_ylabel('Reward')
 
-    # 두 번째 서브플롯에 losses를 그림
+    # 두번째 서브플롯에 losses
     ax2.plot(losses)
     ax2.set_title('Loss')
     ax2.set_xlabel('Episode')
     ax2.set_ylabel('Loss')
 
+    # 세 번째 서브플롯에 action1 distribution 바 그래프로 그리기
+    indices = list(range(10))  # 인덱스 0~9
+    ax3.bar(indices, action1_distribution[:10])  # 인덱스 0~9까지의 데이터를 바 그래프로
+    ax3.set_title('Action Distribution')
+    ax3.set_xlabel('Action [0-9]')
+    ax3.set_ylabel('Count')
+
     plt.show()
 
 if __name__ == '__main__':
+    x=-1
+    y=0
+    for i in range(params.numEdge):
+        if (i%params.grid_size == 0):
+            x += 1
+            y = 0
+        params.edge_pos[i] = [0.5 + y, 0.5 + x]
+        y+=1
+
     if args.train:
         all_ep_r = []
         buffer={
@@ -61,11 +82,14 @@ if __name__ == '__main__':
         # training loop
         total_step = 0
         for eps in range(params.EPS):
-            state1 =  env.reset(-1)
+            clst.form_cluster()
+            clst.visualize_clusters()
+            state1, state2_temp =  env.reset(-1)
             episode_reward = 0
             t0 = time.time()
-            #print("\n\n\n new episode")
-            #loss = 0
+            
+            action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            #sys.exit()
             for step in range(params.STEP*params.numVeh):
                 #print("remains: ", params.remains)
                 total_step+=1
@@ -73,7 +97,9 @@ if __name__ == '__main__':
                 #state1: task info만 담겨있음
                 #ppo에서 server info 바탕으로 attention distribution 만든거랑 task info 합쳐서 encoded_state로 리턴 (이게 곧 real state)
                 action1 = ppo.choose_action(state1) # ppo로 offloading fraction 만들기                
-                state2 = np.concatenate((params.remains_lev, params.hop_count, params.task, action1))
+                action1_distribution[int(action1 * 10)] +=1
+
+                state2 = np.concatenate((state2_temp, action1))
                 #state2 = np.concatenate((state1.reshape(-1), action1.reshape(-1)), axis=-1)
                 params.state2 = state2
                 
@@ -143,9 +169,9 @@ if __name__ == '__main__':
                     sample = replay_buffer.sample(params.dqn_batch)
                     loss = dqn.learn(sample)
                     #epi_loss += loss
-
+            
             if eps % 2 == 0 and eps>0: # plot and model saving interval
-                plot(rewards, losses)
+                plot()
                 np.save('rewards', rewards)
                 #sac_trainer.save_model(params.sac_path)
                 dqn.save_model()
