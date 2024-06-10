@@ -26,7 +26,7 @@ EPSILON = 0.05  # if not using epsilon scheduler, use a constant
 EPSILON_START = 1.
 EPSILON_END = 0.0005
 EPSILON_DECAY = 10000
-LR = 1e-4
+LR = 1e-5
 
 device_idx = 0
 if params.GPU:

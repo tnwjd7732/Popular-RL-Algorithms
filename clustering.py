@@ -18,7 +18,7 @@ class Clustering():
         self.cluster_members = {ch_id: [] for ch_id in range(params.numEdge)}
         params.remains = self.random_list(params.numEdge, params.resource_avg, params.resource_std)
         self.glob_avg = self.calc_globavg()
-        print("Global average: ", self.glob_avg)
+        #print("Global average: ", self.glob_avg)
         self.local_remains = np.copy(params.remains)
 
         CH_resources, CH_ids = self.top_k_elements(params.lamb)

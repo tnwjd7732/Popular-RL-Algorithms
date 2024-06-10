@@ -170,7 +170,7 @@ if __name__ == '__main__':
                     loss = dqn.learn(sample)
                     #epi_loss += loss
             
-            if eps % 2 == 0 and eps>0: # plot and model saving interval
+            if eps % 5 == 0 and eps>0: # plot and model saving interval
                 plot()
                 np.save('rewards', rewards)
                 #sac_trainer.save_model(params.sac_path)

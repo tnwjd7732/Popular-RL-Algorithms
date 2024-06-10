@@ -12,6 +12,7 @@ class Env():
         # Define action and observation space
         self.numEdge = param.numEdge
         self.numVeh = param.numVeh
+        self.wrong_cnt = 0
         
         self.taskInfo = np.zeros(3)
         self.mobilityInfo = np.zeros(4)
@@ -43,7 +44,9 @@ class Env():
                     if self.taskEnd[i] == 0:
                         param.remains[int(self.allo_loc[i])] += self.alloRes_loc[i]
                         param.remains[int(self.allo_neighbor[i])] +=self.alloRes_neighbor[i]
-
+        else:
+            print("이전 에피소드에서의 wrong action 횟수: ", self.wrong_cnt)
+            self.wrong_cnt = 0
         for i in range(params.numEdge):
             params.remains_lev[i] = int(params.remains[i]/10)
         #print("remains level: ", params.remains_lev)       
@@ -120,7 +123,7 @@ class Env():
         optimal_resource_loc =local_amount/tasktime #state[5] = required CPU cycles, state[6] = time deadline
         optimal_resource_loc = min(param.remains[self.nearest], optimal_resource_loc*1.5)
         optimal_resource_off = off_amount/tasktime #state[5] = required CPU cycles, state[6] = time deadline
-        print("my CH: ", self.myCH, "action2: ", action2, "params.CMs[myCH]: ", self.cluster)
+        #print("my CH: ", self.myCH, "action2: ", action2, "params.CMs[myCH]: ", self.cluster)
         
         if(len(self.cluster)) <= action2:
             r1 = 0
@@ -131,11 +134,13 @@ class Env():
             self.alloRes_loc[stepnum]=0
             self.alloRes_neighbor[stepnum]= 0
             self.taskEnd[stepnum] = 0
+            print("wrong action2 ...")
+            self.wrong_cnt+=1
             
         else:
             '''여기서 action2가 실제로 선택 불가한 (len(self.cluster)보다 큰 값일 경우 어케야할까?)'''
             action_globid_ver = self.cluster[int(action2)]
-            print("action glob: ", action_globid_ver)
+            #print("action glob: ", action_globid_ver)
             optimal_resource_off = min(param.remains[action_globid_ver], optimal_resource_off*1.5)
 
             # 2. local computing time 계산
@@ -177,7 +182,7 @@ class Env():
                         r2 = -0.5
                 self.taskEnd[stepnum] = tasktime #실패한 경우 할당받은 자원 사용 시간 = latency 요구사항
             else:
-                #print("Success - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff)
+                print("Success - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff)
                 reward = 1
                 r1 = 1 - min(abs(Tloc-Toff), 0.5)+(tasktime-Ttotal)
                 #print("latency-total:", tasktime-Ttotal)

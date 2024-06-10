@@ -32,7 +32,8 @@ RANDOMSEED = 2  # random seed
 EP_MAX = 10000  # total number of episodes for training
 EP_LEN = 1000  # total number of steps for each episode
 GAMMA = 0.99  # reward discount
-A_LR = 0.0001  # learning rate for actor
+A_LR = 0.0001
+  # learning rate for actor
 C_LR = 0.0002  # learning rate for critic
 BATCH = 1024  # update batchsize
 A_UPDATE_STEPS = 50  # actor update steps
@@ -138,7 +139,7 @@ class PolicyNetwork(nn.Module):
         '''mps로 device 설정하니까 여기서 커널 죽음'''
         state = torch.FloatTensor(state).unsqueeze(0).to(device)
         mean, log_std = self.forward(state)
-        print(state)
+        #print(state)
         if deterministic:
             action = mean
             #print(action)
@@ -156,7 +157,7 @@ class PolicyNetwork(nn.Module):
         return a.numpy()
         
 class PPO(object):
-    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=1e-5, c_lr=3e-5):
+    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=3e-6, c_lr=3e-6):
         self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.critic = ValueNetwork(state_dim, hidden_dim).to(device)
