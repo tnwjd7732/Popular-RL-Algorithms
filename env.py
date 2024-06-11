@@ -40,12 +40,13 @@ class Env():
         if step!=-1:
             for i in range (step+1):
                 if self.taskEnd[i] > 0: # 아직 리소스 사용 중, 실패하더라도 -1로 주지말고 max time 동안 자원 차지하고 있도록 해보자
-                    self.taskEnd[i] = max(0, self.taskEnd[i]-1/self.numVeh)
+                    self.taskEnd[i] = max(0, self.taskEnd[i]-0.5/self.numVeh)
                     if self.taskEnd[i] == 0:
                         param.remains[int(self.allo_loc[i])] += self.alloRes_loc[i]
                         param.remains[int(self.allo_neighbor[i])] +=self.alloRes_neighbor[i]
         else:
             print("이전 에피소드에서의 wrong action 횟수: ", self.wrong_cnt)
+            param.wrong_cnt.append(self.wrong_cnt)
             self.wrong_cnt = 0
         for i in range(params.numEdge):
             params.remains_lev[i] = int(params.remains[i]/10)
@@ -58,8 +59,8 @@ class Env():
         param.task = self.taskInfo
 
         ''' 차량 모빌리티 모델 초기화 (24.05.22 기준으로 정해진 구역 내 완전히 random -> 추후에 more realistic한 mobility model로 업데이트 필요) '''
-        self.mobilityInfo[0] = np.random.uniform(0, 4) #x-axis
-        self.mobilityInfo[1] = np.random.uniform(0, 4) #x-axis#y-axis
+        self.mobilityInfo[0] = np.random.uniform(0, math.sqrt(param.numEdge)) #x-axis
+        self.mobilityInfo[1] = np.random.uniform(0, math.sqrt(param.numEdge)) #x-axis#y-axis
         self.mobilityInfo[2] = np.random.uniform(0.0083, 0.02) #velocity
         self.mobilityInfo[3] = np.random.choice([0, 1, 2, 3]) #angle
 

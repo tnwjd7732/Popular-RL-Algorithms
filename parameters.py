@@ -49,7 +49,7 @@ hop_count = np.zeros(numEdge)
 temp = np.zeros(numEdge)
 
 resource_avg = 20
-resource_std = 20
+resource_std = 15
 
 '''clustering params'''
 lamb = 5 #number of clusters in the system
@@ -73,3 +73,6 @@ edge_pos = np.zeros((numEdge, 2))
 
 radius = 0.5
 
+
+'''graph'''
+wrong_cnt = []

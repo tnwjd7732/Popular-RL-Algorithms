@@ -38,7 +38,7 @@ action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 def plot():
     clear_output(True)
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(20, 20))
 
     # 첫번째 서브플롯에 rewards
     ax1.plot(rewards)
@@ -58,6 +58,11 @@ def plot():
     ax3.set_title('Action Distribution')
     ax3.set_xlabel('Action [0-9]')
     ax3.set_ylabel('Count')
+
+    ax4.plot(params.wrong_cnt)
+    ax4.set_title('Wrong action')
+    ax4.set_xlabel('Episode')
+    ax4.set_ylabel('wrong action count')
 
     plt.show()
 

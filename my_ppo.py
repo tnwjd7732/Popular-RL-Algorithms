@@ -157,7 +157,7 @@ class PolicyNetwork(nn.Module):
         return a.numpy()
         
 class PPO(object):
-    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=3e-6, c_lr=3e-6):
+    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=1e-5, c_lr=1e-5):
         self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.critic = ValueNetwork(state_dim, hidden_dim).to(device)

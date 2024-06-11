@@ -100,7 +100,7 @@ class Clustering():
     def is_adjacent(self, index1, index2):
         row1, col1 = divmod(index1, self.grid_size)
         row2, col2 = divmod(index2, self.grid_size)
-        return abs(row1 - row2) <= 1 and abs(col1 - col2) <= 1
+        return abs(row1 - row2) <=1 and abs(col1 - col2) <= 1
 
     def top_k_elements(self, k):
         sorted_indices = np.argsort(self.local_remains)
