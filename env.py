@@ -40,7 +40,7 @@ class Env():
         if step!=-1:
             for i in range (step+1):
                 if self.taskEnd[i] > 0: # 아직 리소스 사용 중, 실패하더라도 -1로 주지말고 max time 동안 자원 차지하고 있도록 해보자
-                    self.taskEnd[i] = max(0, self.taskEnd[i]-0.5/self.numVeh)
+                    self.taskEnd[i] = max(0, self.taskEnd[i]-0.1/self.numVeh)
                     if self.taskEnd[i] == 0:
                         param.remains[int(self.allo_loc[i])] += self.alloRes_loc[i]
                         param.remains[int(self.allo_neighbor[i])] +=self.alloRes_neighbor[i]
@@ -185,7 +185,7 @@ class Env():
             else:
                 print("Success - Ttotal:" , Ttotal, "Tloc: ", Tloc, "Toff: ", Toff)
                 reward = 1
-                r1 = 1 - min(abs(Tloc-Toff), 0.5)+(tasktime-Ttotal)
+                r1 = 1 - min(abs(Tloc-Toff), 0.5)+(tasktime-Ttotal) - min(Ttrans, 0.5)
                 #print("latency-total:", tasktime-Ttotal)
                 r2 = 1
                 self.taskEnd[stepnum] = Ttotal

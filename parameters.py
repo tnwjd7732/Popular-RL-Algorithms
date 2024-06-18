@@ -24,7 +24,7 @@ ppo_batch = 512
 GAMMA = 0.99
 ''''''
 numEdge = 25
-numVeh = 100
+numVeh = 50
 maxEdge = 10 #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
 
 
