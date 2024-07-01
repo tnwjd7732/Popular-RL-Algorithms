@@ -18,15 +18,15 @@ SAVE_INTERVAL = 20
 TARGET_UPDATE_INTERVAL = 20
 
 BATCH_SIZE = 128
-REPLAY_BUFFER_SIZE = 10000
+REPLAY_BUFFER_SIZE = 100000
 REPLAY_START_SIZE = 2000
 
 GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
-EPSILON_START = 1.
+EPSILON_START = 1.0
 EPSILON_END = 0.0005
-EPSILON_DECAY = 10000
-LR = 1e-5
+EPSILON_DECAY = 50000
+LR = 1e-3
 
 device_idx = 0
 if params.GPU:
@@ -62,7 +62,10 @@ class EpsilonScheduler():
         self.current_frame_idx = frame_idx
         delta_frame_idx = self.current_frame_idx - self.ini_frame_idx
         self.epsilon = self.eps_final + (self.eps_start - self.eps_final) * math.exp(-1. * delta_frame_idx / self.eps_decay)
-    
+        if frame_idx%999 == 0:
+            print("오잉??")
+            params.epsilon_logging.append(self.epsilon)
+        
     def get_epsilon(self):
         #print("epsilon:", self.epsilon)
         return self.epsilon
@@ -71,15 +74,21 @@ class EpsilonScheduler():
 class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
         super(QNetwork, self).__init__()
-        
+        '''
         self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=1, stride=1, padding=0)
         self.conv2 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=1, stride=1, padding=0)
+        '''
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=4, stride=1, padding=0)
+        self.conv2 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=4, stride=1, padding=0)
 
+
+        
         self.flatten1 = nn.Flatten()
         self.flatten2 = nn.Flatten()
 
         # Assuming obs_shape[0] is the number of features for the input state
-        flattened_conv_out_size = 160  # This needs to be adjusted based on the actual input and conv output size
+        #flattened_conv_out_size = 16*params.maxEdge  # This needs to be adjusted based on the actual input and conv output size
+        flattened_conv_out_size = 16*(params.maxEdge+1 - 3)
         self.dense1 = nn.Linear(flattened_conv_out_size, 1)
         self.dense2 = nn.Linear(flattened_conv_out_size, 1)
         
@@ -93,9 +102,12 @@ class QNetwork(nn.Module):
     
     def forward(self, state):
         
-        remain = state[:, :params.maxEdge].unsqueeze(1)
-        hop = state[:, params.maxEdge:params.maxEdge*2].unsqueeze(1)
-        taskandfrac = state[:, params.maxEdge*2:]
+        remain = state[:, :params.maxEdge+1].unsqueeze(1)
+        #print("remains: ",remain)
+        hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
+        #print("hop", hop)
+        taskandfrac = state[:, (params.maxEdge+1)*2:]
+        #print("task: ", taskandfrac)
 
         x1 = F.relu(self.conv1(remain))
         x2 = F.relu(self.conv2(hop))
@@ -137,6 +149,7 @@ class replay_buffer:
     def sample(self, batch_size):
         return random.sample(self.buffer, batch_size)
 
+
 class DQN(object):
     def __init__(self, env):
         self.action_shape = params.action_dim2
@@ -144,6 +157,7 @@ class DQN(object):
         self.eval_net, self.target_net = QNetwork(self.action_shape, self.obs_shape).to(device), QNetwork(self.action_shape, self.obs_shape).to(device)
         self.learn_step_counter = 0                                     # for target updating
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=LR)
+        self.scheduler1 = optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.9)
         self.loss_func = nn.MSELoss()
         self.epsilon_scheduler = EpsilonScheduler(EPSILON_START, EPSILON_END, EPSILON_DECAY)
         self.updates = 0
@@ -208,12 +222,22 @@ class DQN(object):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        self.scheduler1.step()
 
         self.updates += 1
         if self.updates % TARGET_UPDATE_INTERVAL == 0:
             self.update_target()
 
         return loss.item()
+
+    def save_model(self, model_path=None):
+        torch.save(self.eval_net.state_dict(), 'model/dqn')
+
+    def update_target(self, ):
+        """
+        Update the target model when necessary.
+        """
+        self.target_net.load_state_dict(self.eval_net.state_dict())
 
     def save_model(self, model_path=None):
         torch.save(self.eval_net.state_dict(), 'model/dqn')

@@ -14,6 +14,7 @@ class Clustering():
         self.cluster_averages = np.zeros(params.numEdge)  # 클러스터 평균 자원량 저장용
 
     def form_cluster(self):
+        #print("form cluster")
         self.CH = []
         self.cluster_members = {ch_id: [] for ch_id in range(params.numEdge)}
         params.remains = self.random_list(params.numEdge, params.resource_avg, params.resource_std)
@@ -25,36 +26,52 @@ class Clustering():
         self.CH = CH_ids.tolist()
 
         unassigned_servers = set(range(params.numEdge)) - set(self.CH)
+        loop_count = 0  # To prevent infinite loop, add a counter
         while unassigned_servers:
+            loop_count += 1
+            #print(f"Loop count: {loop_count}")
             for ch_id in self.CH:
                 if not unassigned_servers:
                     break
-                
+                #maxEdge 보다 하나 작은 경우부터 패스하는 이유: CH도 포함하면 maxEdge되므로
+                if len(self.cluster_members[ch_id]) >= (params.maxEdge - 1):
+                    continue  # Skip this CH if it already has maxEdge members
+
                 all_members = [ch_id] + self.cluster_members[ch_id]
                 neighbors = set()
                 for member in all_members:
                     neighbors.update(self.get_neighbors(member))
-                
+
                 eligible_neighbors = [n for n in neighbors if n in unassigned_servers]
-                
+
+                #print(f"Cluster Head {ch_id} neighbors: {eligible_neighbors}")
+
                 if eligible_neighbors:
                     selected_neighbor = self.select_best_neighbor(all_members, eligible_neighbors)
+                    #print(f"Cluster Head {ch_id} selected neighbor: {selected_neighbor}")
                     self.cluster_members[ch_id].append(selected_neighbor)
                     unassigned_servers.remove(selected_neighbor)
-            
+                
+
             self.update_cluster_averages()
-            
+
             # 우선 순위를 glob_avg에서 가장 먼 CH로 정렬
             self.CH.sort(key=lambda ch_id: abs(self.glob_avg - self.calc_cluster_avg(ch_id)), reverse=True)
-        
+
+            #print(f"Unassigned servers remaining: {unassigned_servers}")
+            if loop_count > 1000:  # Arbitrary large number to break potential infinite loop
+                #print("Breaking loop due to excessive iterations")
+                break
+
         print(params.remains)
         print("Cluster Heads:", self.CH)
         for ch_id in self.CH:
             print(f"Cluster Head {ch_id}: Members {self.cluster_members[ch_id]}")
-        
+
         # 각각의 리스트를 오름차순으로 정렬
         params.CHs = sorted(self.CH)
         params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
+        #print("EOC")
 
 
     def get_neighbors(self, index):
@@ -124,10 +141,11 @@ class Clustering():
         return np.mean(params.remains)
     
     def visualize_clusters(self):
+        #print("cluster visualize")
         colors = cm.rainbow(np.linspace(0, 1, len(self.CH)))
         color_map = {ch_id: color for ch_id, color in zip(self.CH, colors)}
 
-        plt.figure(figsize=(8, 8))
+        plt.figure(figsize=(4, 4))
         for ch_id in self.CH:
             ch_pos = divmod(ch_id, self.grid_size)
             ch_avg = self.cluster_averages[ch_id]
@@ -150,6 +168,7 @@ class Clustering():
         plt.title(f'Cluster Visualization (Global Avg: {self.glob_avg:.1f})')
         plt.show()
         #sys.exit()
+        #print("EOV")
 
     def random_list(self, size, target_mean, target_std):
         random_values = []

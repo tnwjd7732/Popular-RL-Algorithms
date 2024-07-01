@@ -96,9 +96,9 @@ class PolicyNetwork(nn.Module):
         self.log_std_max = log_std_max
 
         # 1D Convolutional layer
-        self.conv1 = nn.Conv1d(in_channels=1, out_channels=4, kernel_size=4, stride=1, padding=0)
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=4, stride=1, padding=0)
         self.flatten1 = nn.Flatten()
-        self.dense1 = nn.Linear(28, 1)
+        self.dense1 = nn.Linear(16*(params.maxEdge+1-3), 1)
         self.linear1 = nn.Linear(4, hidden_dim)  # Adjust input size after convolution
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear3 = nn.Linear(hidden_dim, hidden_dim)
@@ -115,13 +115,13 @@ class PolicyNetwork(nn.Module):
         self.action_range = action_range
 
     def forward(self, state):
-        remain = state[:, :params.maxEdge].unsqueeze(1) 
-        task = state[:, params.maxEdge:params.maxEdge+3]
-
+        remain = state[:, :params.maxEdge+1].unsqueeze(1) 
+        task = state[:, params.maxEdge+1:]
+        #print("remain: ", remain, "task: ", task)
         # 1D Convolutional layer
         x1 = F.relu(self.conv1(remain))
         x1 = self.flatten1(x1)
-        x1 = F.tanh(self.dense1(x1))
+        x1 = F.relu(self.dense1(x1))
 
         x = torch.cat((x1, task), dim=1)  # Ensure second part is also 2D
         x = F.relu(self.linear1(x))
@@ -135,7 +135,7 @@ class PolicyNetwork(nn.Module):
         return mean, log_std
 
     
-    def get_action(self, state, deterministic=True):
+    def get_action(self, state, deterministic=False):
         '''mps로 device 설정하니까 여기서 커널 죽음'''
         state = torch.FloatTensor(state).unsqueeze(0).to(device)
         mean, log_std = self.forward(state)
@@ -157,13 +157,18 @@ class PolicyNetwork(nn.Module):
         return a.numpy()
         
 class PPO(object):
-    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=1e-5, c_lr=1e-5):
+    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=1e-3, c_lr=3e-3):
         self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.critic = ValueNetwork(state_dim, hidden_dim).to(device)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=a_lr)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=c_lr)
-        print(self.actor, self.critic)
+        
+        self.scheduler_actor = optim.lr_scheduler.StepLR(self.actor_optimizer, step_size=100, gamma=0.95)
+        self.scheduler_critic = optim.lr_scheduler.StepLR(self.critic_optimizer, step_size=100, gamma=0.95)
+
+        
+        #print(self.actor, self.critic)
 
     def a_train(self, s, a, adv):
         mu, log_std = self.actor(s)
@@ -200,6 +205,7 @@ class PPO(object):
         self.actor_optimizer.zero_grad()
         aloss.backward()
         self.actor_optimizer.step()
+        self.scheduler_actor.step()
 
         if METHOD['name'] == 'kl_pen':
             return kl_mean
@@ -220,6 +226,10 @@ class PPO(object):
         self.critic_optimizer.zero_grad()
         closs.backward()
         self.critic_optimizer.step()
+        self.scheduler_critic.step()
+        actor_lr = self.actor_optimizer.param_groups[0]['lr']
+        critic_lr = self.critic_optimizer.param_groups[0]['lr']
+        print("Actor LR:", actor_lr, "Critic LR: ", critic_lr)
 
     def cal_adv(self, s, cumulative_r):
         advantage = cumulative_r - self.critic(s)
@@ -257,8 +267,8 @@ class PPO(object):
         self.update_old_pi()
  
 
-    def choose_action(self, s, deterministic=True):
-        action1 = self.actor.get_action(s, deterministic=True)
+    def choose_action(self, s, deterministic=False):
+        action1 = self.actor.get_action(s, deterministic=False)
         return action1.detach().cpu().numpy()
     
     def get_v(self, s):

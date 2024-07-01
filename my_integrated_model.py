@@ -27,48 +27,90 @@ dqn = my_dqn.DQN(env)
 clst = clustering.Clustering()
 
 
+
 parser = argparse.ArgumentParser(description='Train or test neural net motor controller.')
 parser.add_argument('--train', dest='train', action='store_true', default=False)
 parser.add_argument('--test', dest='test', action='store_true', default=False)
 
 args = parser.parse_args()
-rewards     = []
+rewards1     = []
+rewards2=[]
 losses = []
+success_rate = []
+
+rewards1.clear()
+rewards2.clear()
+
+losses.clear()
+params.wrong_cnt.clear()
+params.epsilon_logging.clear()
+params.cloud_cnt.clear()
+
+
 action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 def plot():
     clear_output(True)
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(20, 20))
+    fig, ((ax1, ax2, ax3, ax4), (ax5, ax6, ax7, ax8)) = plt.subplots(2, 4, figsize=(20, 8))
+
+    font_size = params.font_size  # 폰트 크기 설정
 
     # 첫번째 서브플롯에 rewards
-    ax1.plot(rewards)
-    ax1.set_title('Rewards')
-    ax1.set_xlabel('Episode')
-    ax1.set_ylabel('Reward')
+    ax1.plot(rewards1)
+    ax1.set_xlabel('Episode', fontsize=font_size)
+    ax1.set_ylabel('Reward1', fontsize=font_size)
+    ax1.tick_params(axis='both', which='major', labelsize=font_size)
 
-    # 두번째 서브플롯에 losses
-    ax2.plot(losses)
-    ax2.set_title('Loss')
-    ax2.set_xlabel('Episode')
-    ax2.set_ylabel('Loss')
+    ax2.plot(rewards2)
+    ax2.set_xlabel('Episode', fontsize=font_size)
+    ax2.set_ylabel('Reward2', fontsize=font_size)
+    ax2.tick_params(axis='both', which='major', labelsize=font_size)
+
 
     # 세 번째 서브플롯에 action1 distribution 바 그래프로 그리기
     indices = list(range(10))  # 인덱스 0~9
     ax3.bar(indices, action1_distribution[:10])  # 인덱스 0~9까지의 데이터를 바 그래프로
-    ax3.set_title('Action Distribution')
-    ax3.set_xlabel('Action [0-9]')
-    ax3.set_ylabel('Count')
+    ax3.set_xlabel('Action [0-9]', fontsize=font_size)
+    ax3.set_ylabel('Count', fontsize=font_size)
+    ax3.tick_params(axis='both', which='major', labelsize=font_size)
 
-    ax4.plot(params.wrong_cnt)
-    ax4.set_title('Wrong action')
-    ax4.set_xlabel('Episode')
-    ax4.set_ylabel('wrong action count')
+    # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
+    ax4.plot(params.wrong_cnt[1:])
+    ax4.set_xlabel('Episode', fontsize=font_size)
+    ax4.set_ylabel('Invalid action count', fontsize=font_size)
+    ax4.tick_params(axis='both', which='major', labelsize=font_size)
 
+    # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
+    ax5.plot(params.cloud_cnt[1:])
+    ax5.set_xlabel('Episode', fontsize=font_size)
+    ax5.set_ylabel('Cloud selection', fontsize=font_size)
+    ax5.tick_params(axis='both', which='major', labelsize=font_size)
+
+     # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
+    ax6.plot(params.epsilon_logging)
+    ax6.set_xlabel('Episode', fontsize=font_size)
+    ax6.set_ylabel('Epsilon (DDQN)', fontsize=font_size)
+    ax6.tick_params(axis='both', which='major', labelsize=font_size)
+
+     # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
+    ax7.plot(success_rate)
+    ax7.set_xlabel('Episode', fontsize=font_size)
+    ax7.set_ylabel('Success rate', fontsize=font_size)
+    ax7.tick_params(axis='both', which='major', labelsize=font_size)
+    
+
+    # 두번째 서브플롯에 losses
+    ax8.plot(losses)
+    ax8.set_xlabel('Episode', fontsize=font_size)
+    ax8.set_ylabel('Loss', fontsize=font_size)
+    ax8.tick_params(axis='both', which='major', labelsize=font_size)
     plt.show()
+
 
 if __name__ == '__main__':
     x=-1
     y=0
+    fail = 0
     for i in range(params.numEdge):
         if (i%params.grid_size == 0):
             x += 1
@@ -87,10 +129,13 @@ if __name__ == '__main__':
         # training loop
         total_step = 0
         for eps in range(params.EPS):
+            fail = 0
             clst.form_cluster()
             clst.visualize_clusters()
             state1, state2_temp =  env.reset(-1)
             episode_reward = 0
+            eps_r1 = 0
+            eps_r2 = 0
             t0 = time.time()
             
             action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -100,9 +145,11 @@ if __name__ == '__main__':
                 total_step+=1
                 #print("EPS: ", eps, "STEP: ", step)
                 #state1: task info만 담겨있음
+                #print(state1)
                 #ppo에서 server info 바탕으로 attention distribution 만든거랑 task info 합쳐서 encoded_state로 리턴 (이게 곧 real state)
-                action1 = ppo.choose_action(state1) # ppo로 offloading fraction 만들기                
-                action1_distribution[int(action1 * 10)] +=1
+                action1 = ppo.choose_action(state1) # ppo로 offloading fraction 만들기     
+                          
+                action1_distribution[min(int(action1 * 10), 9)] +=1
 
                 state2 = np.concatenate((state2_temp, action1))
                 #state2 = np.concatenate((state1.reshape(-1), action1.reshape(-1)), axis=-1)
@@ -113,29 +160,31 @@ if __name__ == '__main__':
                 #action2 = sac_trainer.policy_net.get_action(state2, deterministic = True) # state2로 sac output (offloading decision) 만들기
                 action2 = dqn.choose_action(state2)
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step) # 두개의 action 가지고 step
-                            
-                '''방금의 경험을 각각의 버퍼에 기록하는 과정'''
-                buffer['state'].append(state1)
-                buffer['action'].append(action1)
-                buffer['reward'].append(r1) 
-                buffer['done'].append(done) 
-                replay_buffer.add([state2,s2_,[action2],[r2],[done]])
-                dqn.epsilon_scheduler.step(total_step)
+
+                # Check for NaN values in r, r1, or r2
+                if any([np.isnan(val) for val in [r, r1, r2]]):
+                    r1 = 0
+                    r2 = 0
+                    r = 0
+                    print("nan value - did not store in buffer...")
+                else:
+                    buffer['state'].append(state1)
+                    buffer['action'].append(action1)
+                    buffer['reward'].append(r1) 
+                    buffer['done'].append(done) 
+                    replay_buffer.add([state2,s2_,[action2],[r2],[done]])
+                    dqn.epsilon_scheduler.step(total_step)
 
                 '''상태 전이, 보상 누적'''
                 state1 = s1_
                 state2 = s2_
-                episode_reward += r         
-                '''
-                # update SAC
-                if len(replay_buffer) > params.sac_batch and step % params.sac_interval ==0:
-                    #print("update SAC")
-                    for i in range(params.update_itr):
-                        _=sac_trainer.update(params.sac_batch, reward_scale=1., auto_entropy=False, target_entropy=-2)
+                episode_reward += r        
+                eps_r1 += r1
+                eps_r2 += r2 
                 
-                if done:
-                    break
-                '''
+                if r == 0:
+                    fail += 1
+
                 # update PPO
                 if (step + 1) % params.ppo_batch== 0:
                     #print("update PPO")
@@ -177,12 +226,16 @@ if __name__ == '__main__':
             
             if eps % 5 == 0 and eps>0: # plot and model saving interval
                 plot()
-                np.save('rewards', rewards)
+                #np.save('rewards', rewards)
                 #sac_trainer.save_model(params.sac_path)
                 dqn.save_model()
                 ppo.save_model(params.ppo_path)
             print('Episode: ', eps, '| Episode Reward: ', episode_reward, '| Episode Length: ', step)
-            rewards.append(episode_reward)
+            rewards1.append(eps_r1)
+            rewards2.append(eps_r2)
+
+            success_ratio = (params.STEP*params.numVeh-fail)/(params.STEP*params.numVeh)
+            success_rate.append(success_ratio)
             if total_step > my_dqn.REPLAY_START_SIZE and len(replay_buffer.buffer) >= params.dqn_batch :
                 losses.append(loss)
                 print(loss, type(loss))
