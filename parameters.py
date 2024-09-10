@@ -12,7 +12,7 @@ GPU = False
 
 
 '''training parameters'''
-EPS=300
+EPS=500
 STEP = 20
 GAMMA = 0.99
 
