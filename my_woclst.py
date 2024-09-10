@@ -105,7 +105,7 @@ def plot():
     ax8.set_ylabel('Loss', fontsize=font_size)
     ax8.tick_params(axis='both', which='major', labelsize=font_size)
     plt.show()
-
+    
 if __name__ == '__main__':
     x = -1
     y = 0
@@ -129,9 +129,9 @@ if __name__ == '__main__':
         total_step = 0
         for eps in range(params.EPS):
             fail = 0
-            clst.form_cluster()
-            clst.visualize_clusters()
-            state1, state2_temp = env.reset(-1, 1)
+            clst.form_cluster_woclst()
+            #clst.visualize_clusters()
+            state1, state2_temp = env.reset(-1,1 )
             episode_reward = 0
             eps_r1 = 0
             eps_r2 = 0
@@ -164,8 +164,7 @@ if __name__ == '__main__':
                     buffer['action'].append(action1)
                     buffer['reward'].append(r1)
                     buffer['done'].append(done)
-                    if action1 != 0: # if action1 (offloading fraction) is zero, the offloading decision is not meaningful...
-                        replay_buffer.add([state2, s2_, [action2], [r2], [done]])
+                    replay_buffer.add([state2, s2_, [action2], [r2], [done]])
                     dqn.epsilon_scheduler.step(total_step)
 
                 state1 = s1_
@@ -210,8 +209,8 @@ if __name__ == '__main__':
 
             if eps % 5 == 0 and eps > 0:  # plot and model saving interval
                 plot()
-                dqn.save_model(params.dqn_path)
-                ppo.save_model(params.ppo_path)
+                dqn.save_model(params.woClst_dqn_path)
+                ppo.save_model(params.woClst_ppo_path)
 
             #print('Episode: ', eps, '| Episode Reward: ', episode_reward, '| Episode Length: ', step)
             rewards1.append(eps_r1)
@@ -223,5 +222,5 @@ if __name__ == '__main__':
                 losses.append(loss)
                 #print(loss, type(loss))
 
-        dqn.save_model(params.dqn_path)
-        ppo.save_model(params.ppo_path)
+        dqn.save_model(params.woClst_dqn_path)
+        ppo.save_model(params.woClst_ppo_path)

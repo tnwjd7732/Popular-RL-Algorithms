@@ -12,30 +12,42 @@ class Clustering():
         self.grid_size = int(math.sqrt(params.numEdge))
         self.cluster_members = {ch_id: [] for ch_id in range(params.numEdge)}
         self.cluster_averages = np.zeros(params.numEdge)  # 클러스터 평균 자원량 저장용
+    
+    def form_cluster_woclst(self):
+        self.CH = list(range(params.numEdge))  # 모든 서버를 클러스터 헤드로 설정
+        self.cluster_members = {ch_id: [] for ch_id in self.CH}
+        params.remains = self.random_list(params.numEdge, params.resource_avg, params.resource_std)
+
+        for ch_id in self.CH:
+            neighbors = self.get_neighbors(ch_id)
+            self.cluster_members[ch_id] = neighbors  # 1-hop 이웃을 클러스터 멤버로 추가
+
+        # 각각의 리스트를 오름차순으로 정렬
+        params.CHs = sorted(self.CH)
+        params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
+
 
     def form_cluster(self):
-        #print("form cluster")
+        # 초기화
         self.CH = []
         self.cluster_members = {ch_id: [] for ch_id in range(params.numEdge)}
         params.remains = self.random_list(params.numEdge, params.resource_avg, params.resource_std)
         self.glob_avg = self.calc_globavg()
-        #print("Global average: ", self.glob_avg)
         self.local_remains = np.copy(params.remains)
 
         CH_resources, CH_ids = self.top_k_elements(params.lamb)
         self.CH = CH_ids.tolist()
 
         unassigned_servers = set(range(params.numEdge)) - set(self.CH)
-        loop_count = 0  # To prevent infinite loop, add a counter
+        loop_count = 0  # 무한 루프 방지를 위한 카운터
+
         while unassigned_servers:
             loop_count += 1
-            #print(f"Loop count: {loop_count}")
             for ch_id in self.CH:
                 if not unassigned_servers:
                     break
-                #maxEdge 보다 하나 작은 경우부터 패스하는 이유: CH도 포함하면 maxEdge되므로
                 if len(self.cluster_members[ch_id]) >= (params.maxEdge - 1):
-                    continue  # Skip this CH if it already has maxEdge members
+                    continue  # 이미 maxEdge에 도달한 경우 건너뜀
 
                 all_members = [ch_id] + self.cluster_members[ch_id]
                 neighbors = set()
@@ -44,51 +56,62 @@ class Clustering():
 
                 eligible_neighbors = [n for n in neighbors if n in unassigned_servers]
 
-                #print(f"Cluster Head {ch_id} neighbors: {eligible_neighbors}")
-
                 if eligible_neighbors:
                     selected_neighbor = self.select_best_neighbor(all_members, eligible_neighbors)
-                    #print(f"Cluster Head {ch_id} selected neighbor: {selected_neighbor}")
                     self.cluster_members[ch_id].append(selected_neighbor)
                     unassigned_servers.remove(selected_neighbor)
-                
 
             self.update_cluster_averages()
-
-            # 우선 순위를 glob_avg에서 가장 먼 CH로 정렬
-            self.CH.sort(key=lambda ch_id: abs(self.glob_avg - self.calc_cluster_avg(ch_id)), reverse=True)
-
-            #print(f"Unassigned servers remaining: {unassigned_servers}")
-            if loop_count > 1000:  # Arbitrary large number to break potential infinite loop
-                #print("Breaking loop due to excessive iterations")
+            self.CH.sort(key=lambda ch_id: self.calc_cluster_avg(ch_id), reverse=True)  # 클러스터 내 평균 자원이 많은 순서대로 정렬
+            if loop_count > 1000:  # 무한 루프 방지를 위한 임의의 큰 숫자
                 break
 
-        print(params.remains)
-        print("Cluster Heads:", self.CH)
-        for ch_id in self.CH:
-            print(f"Cluster Head {ch_id}: Members {self.cluster_members[ch_id]}")
+        # 1-hop 연결을 유지하며 미배정 서버 처리
+        if unassigned_servers:
+            for server in list(unassigned_servers):
+                # 1-hop 이내에 있는 클러스터 헤드 찾기
+                neighbor_chs = [ch_id for ch_id in self.CH if server in self.get_neighbors(ch_id)]
+                if neighbor_chs:
+                    best_ch_id = None
+                    best_diff = float('inf')
+                    for ch_id in neighbor_chs:
+                        if len(self.cluster_members[ch_id]) < (params.maxEdge - 1):
+                            diff = abs(self.calc_cluster_avg(ch_id) - params.remains[server])
+                            if diff < best_diff:
+                                best_diff = diff
+                                best_ch_id = ch_id
 
-        # 각각의 리스트를 오름차순으로 정렬
+                    if best_ch_id is not None:
+                        self.cluster_members[best_ch_id].append(server)
+                        unassigned_servers.remove(server)
+                    else:
+                        # 적절한 클러스터를 찾지 못한 경우 새로운 클러스터 헤드를 생성
+                        new_ch_id = server
+                        self.CH.append(new_ch_id)
+                        self.cluster_members[new_ch_id] = []
+                else:
+                    # 1-hop 이내에 클러스터 헤드가 없는 경우 새로운 클러스터 헤드를 생성
+                    new_ch_id = server
+                    self.CH.append(new_ch_id)
+                    self.cluster_members[new_ch_id] = []
+
         params.CHs = sorted(self.CH)
         params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
-        #print("EOC")
 
 
-    def get_neighbors(self, index):
-        row, col = divmod(index, self.grid_size)
-        neighbors = []
-        
-        # 상하좌우의 이웃을 추가
-        if row > 0:
-            neighbors.append((row - 1) * self.grid_size + col)  # 위
-        if row < self.grid_size - 1:
-            neighbors.append((row + 1) * self.grid_size + col)  # 아래
-        if col > 0:
-            neighbors.append(row * self.grid_size + col - 1)  # 왼쪽
-        if col < self.grid_size - 1:
-            neighbors.append(row * self.grid_size + col + 1)  # 오른쪽
-        
-        return neighbors
+    def get_neighbors(self, nodeId):
+            """ Get n-hop neighbors of the given nodeId """
+            node_x, node_y = params.edge_pos[nodeId]
+            neighbors = []
+            for i in range(params.numEdge):
+                if i == nodeId:
+                    continue
+                x, y = params.edge_pos[i]
+                distance = np.sqrt((node_x - x)**2 + (node_y - y)**2)
+                if distance <= 1 * (params.radius*2):
+                    neighbors.append(i)
+            #print(neighbors)
+            return neighbors
 
     def select_best_neighbor(self, members, neighbors):
         best_neighbor = None
@@ -117,7 +140,7 @@ class Clustering():
     def is_adjacent(self, index1, index2):
         row1, col1 = divmod(index1, self.grid_size)
         row2, col2 = divmod(index2, self.grid_size)
-        return abs(row1 - row2) <=1 and abs(col1 - col2) <= 1
+        return abs(row1 - row2) + abs(col1 - col2) <= 1
 
     def top_k_elements(self, k):
         sorted_indices = np.argsort(self.local_remains)
@@ -142,6 +165,7 @@ class Clustering():
     
     def visualize_clusters(self):
         #print("cluster visualize")
+        
         colors = cm.rainbow(np.linspace(0, 1, len(self.CH)))
         color_map = {ch_id: color for ch_id, color in zip(self.CH, colors)}
 
@@ -159,6 +183,7 @@ class Clustering():
                 plt.text(member_pos[1] + 0.5, member_pos[0] + 0.7, f"{params.remains[member]:.1f}",
                          fontsize=9, ha='center', va='center', color='black')
                 
+        
         plt.xlim(0, self.grid_size)
         plt.ylim(0, self.grid_size)
         plt.gca().invert_yaxis()
@@ -169,11 +194,25 @@ class Clustering():
         plt.show()
         #sys.exit()
         #print("EOV")
+        
 
     def random_list(self, size, target_mean, target_std):
-        random_values = []
-        while len(random_values) < size:
-            value = np.random.normal(loc=target_mean, scale=target_std)
-            if value >= 0:
-                random_values.append(value)
-        return np.array(random_values)
+        if params.distribution_mode == 0:
+            random_values = []
+            while len(random_values) < size:
+                value = np.random.normal(loc=target_mean, scale=target_std)
+                if value >= 0:
+                    random_values.append(value)
+            return np.array(random_values)
+        
+        elif params.distribution_mode == 1: #region별로 분포가 다른 경우
+            random_values = []
+            while len(random_values) < int(size/3):
+                value = np.random.normal(loc=target_mean*3, scale=target_std)
+                if value >= 0:
+                    random_values.append(value)
+            while len(random_values) < size:
+                value = np.random.normal(loc=target_mean*0.1, scale=target_std/5)
+                if value >= 0:
+                    random_values.append(value)
+            return np.array(random_values)

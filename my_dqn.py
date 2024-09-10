@@ -26,7 +26,6 @@ EPSILON = 0.05  # if not using epsilon scheduler, use a constant
 EPSILON_START = 1.0
 EPSILON_END = 0.0005
 EPSILON_DECAY = 50000
-LR = 1e-3
 
 device_idx = 0
 if params.GPU:
@@ -80,15 +79,16 @@ class QNetwork(nn.Module):
         '''
         self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=4, stride=1, padding=0)
         self.conv2 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=4, stride=1, padding=0)
-
-
         
         self.flatten1 = nn.Flatten()
         self.flatten2 = nn.Flatten()
 
         # Assuming obs_shape[0] is the number of features for the input state
         #flattened_conv_out_size = 16*params.maxEdge  # This needs to be adjusted based on the actual input and conv output size
-        flattened_conv_out_size = 16*(params.maxEdge+1 - 3)
+        if params.cloud == 1:
+            flattened_conv_out_size = 16*(params.maxEdge+1 - 3)
+        else: 
+            flattened_conv_out_size = 16*(params.maxEdge- 3)
         self.dense1 = nn.Linear(flattened_conv_out_size, 1)
         self.dense2 = nn.Linear(flattened_conv_out_size, 1)
         
@@ -101,13 +101,15 @@ class QNetwork(nn.Module):
         self.output = nn.Linear(hidden_size, act_shape)
     
     def forward(self, state):
-        
-        remain = state[:, :params.maxEdge+1].unsqueeze(1)
-        #print("remains: ",remain)
-        hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
-        #print("hop", hop)
-        taskandfrac = state[:, (params.maxEdge+1)*2:]
-        #print("task: ", taskandfrac)
+        if params.cloud == 1:
+            remain = state[:, :params.maxEdge+1].unsqueeze(1)
+            hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
+            taskandfrac = state[:, (params.maxEdge+1)*2:]
+        else: 
+            remain = state[:, :params.maxEdge].unsqueeze(1)
+            hop = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
+            taskandfrac = state[:, (params.maxEdge)*2:]
+
 
         x1 = F.relu(self.conv1(remain))
         x2 = F.relu(self.conv2(hop))
@@ -151,30 +153,35 @@ class replay_buffer:
 
 
 class DQN(object):
-    def __init__(self, env):
-        self.action_shape = params.action_dim2
-        self.obs_shape = params.state_dim2
+    def __init__(self, env, action_dim, state_dim):
+        self.action_shape = action_dim
+        self.obs_shape = state_dim
         self.eval_net, self.target_net = QNetwork(self.action_shape, self.obs_shape).to(device), QNetwork(self.action_shape, self.obs_shape).to(device)
         self.learn_step_counter = 0                                     # for target updating
-        self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=LR)
-        self.scheduler1 = optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.9)
+        self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=params.dqnlr)
+        self.scheduler1 = optim.lr_scheduler.StepLR(self.optimizer, step_size=params.scheduler_step, gamma=params.scheduler_gamma)
         self.loss_func = nn.MSELoss()
         self.epsilon_scheduler = EpsilonScheduler(EPSILON_START, EPSILON_END, EPSILON_DECAY)
         self.updates = 0
 
-    def choose_action(self, x):
+    def choose_action(self, x, test):
         # x = Variable(torch.unsqueeze(torch.FloatTensor(x), 0)).to(device)
         x = torch.unsqueeze(torch.FloatTensor(x), 0).to(device)
         # input only one sample
         # if np.random.uniform() > EPSILON:   # greedy
-        epsilon = self.epsilon_scheduler.get_epsilon()
-        #print("epsilon: ", epsilon)
-        if np.random.uniform() > epsilon:   # greedy
+
+        if test == 1:
             actions_value = self.eval_net.forward(x)
             action = torch.max(actions_value, 1)[1].data.cpu().numpy()[0]     # return the argmax
-            # print(action)
-        else:   # random
-            action = np.random.randint(0, self.action_shape)
+        else: #training phase
+            epsilon = self.epsilon_scheduler.get_epsilon()
+            #print("epsilon: ", epsilon)
+            if np.random.uniform() > epsilon:   # greedy
+                actions_value = self.eval_net.forward(x)
+                action = torch.max(actions_value, 1)[1].data.cpu().numpy()[0]     # return the argmax
+                # print(action)
+            else:   # random
+                action = np.random.randint(0, self.action_shape)
         return action
 
     def learn(self, sample,):
@@ -230,17 +237,13 @@ class DQN(object):
 
         return loss.item()
 
-    def save_model(self, model_path=None):
-        torch.save(self.eval_net.state_dict(), 'model/dqn')
+    def save_model(self, path):
+        torch.save(self.eval_net.state_dict(), path)
 
-    def update_target(self, ):
-        """
-        Update the target model when necessary.
-        """
-        self.target_net.load_state_dict(self.eval_net.state_dict())
+    def load_model(self, path):
+        self.eval_net.load_state_dict(torch.load(path))
+        self.eval_net.eval()
 
-    def save_model(self, model_path=None):
-        torch.save(self.eval_net.state_dict(), 'model/dqn')
 
     def update_target(self, ):
         """
@@ -252,7 +255,7 @@ def rollout(env, model):
     r_buffer = replay_buffer(REPLAY_BUFFER_SIZE)
     log = []
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    print('\nCollecting experience...')
+    #print('\nCollecting experience...')
     total_step = 0
     for epi in range(MAX_EPI):
         s=env.reset()
@@ -274,7 +277,7 @@ def rollout(env, model):
             if done:
                 break
             s = s_
-        print('Ep: ', epi, '| Ep_r: ', epi_r, '| Steps: ', step, f'| Ep_Loss: {epi_loss:.4f}', )
+        #print('Ep: ', epi, '| Ep_r: ', epi_r, '| Steps: ', step, f'| Ep_Loss: {epi_loss:.4f}', )
         log.append([epi, epi_r, step])
         # if epi % SAVE_INTERVAL == 0:
             # model.save_model()
@@ -282,6 +285,6 @@ def rollout(env, model):
 
 if __name__ == '__main__':
     env = gym.make('CartPole-v1')
-    print(env.observation_space, env.action_space)
+    #print(env.observation_space, env.action_space)
     model = DQN(env)
     rollout(env, model)

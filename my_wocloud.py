@@ -15,6 +15,8 @@ import math
 import clustering 
 import sys
 
+params.cloud = 0
+
 replay_buffer_size = 1e6
 #replay_buffer = my_sac.ReplayBuffer_SAC(replay_buffer_size)
 replay_buffer = my_dqn.replay_buffer(replay_buffer_size)
@@ -23,9 +25,10 @@ env = environment.Env()
 cluster = clustering.Clustering()
 
 ppo = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim) # continous model (offloading fraction - model1)
-dqn = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+dqn = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
 clst = clustering.Clustering()
 
+#print(params.cloud)
 
 
 parser = argparse.ArgumentParser(description='Train or test neural net motor controller.')
@@ -105,7 +108,7 @@ def plot():
     ax8.set_ylabel('Loss', fontsize=font_size)
     ax8.tick_params(axis='both', which='major', labelsize=font_size)
     plt.show()
-
+    
 if __name__ == '__main__':
     x = -1
     y = 0
@@ -130,8 +133,8 @@ if __name__ == '__main__':
         for eps in range(params.EPS):
             fail = 0
             clst.form_cluster()
-            clst.visualize_clusters()
-            state1, state2_temp = env.reset(-1, 1)
+            #clst.visualize_clusters()
+            state1, state2_temp = env.reset(-1, 0)
             episode_reward = 0
             eps_r1 = 0
             eps_r2 = 0
@@ -151,7 +154,7 @@ if __name__ == '__main__':
 
                 random_number = random.uniform(0, 1)
                 action2 = dqn.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
-                s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
+                s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 0)  # 두개의 action 가지고 step
 
                 # Check for NaN values in r, r1, or r2
                 if any([np.isnan(val) for val in [r, r1, r2]]):
@@ -164,8 +167,7 @@ if __name__ == '__main__':
                     buffer['action'].append(action1)
                     buffer['reward'].append(r1)
                     buffer['done'].append(done)
-                    if action1 != 0: # if action1 (offloading fraction) is zero, the offloading decision is not meaningful...
-                        replay_buffer.add([state2, s2_, [action2], [r2], [done]])
+                    replay_buffer.add([state2, s2_, [action2], [r2], [done]])
                     dqn.epsilon_scheduler.step(total_step)
 
                 state1 = s1_
@@ -210,8 +212,8 @@ if __name__ == '__main__':
 
             if eps % 5 == 0 and eps > 0:  # plot and model saving interval
                 plot()
-                dqn.save_model(params.dqn_path)
-                ppo.save_model(params.ppo_path)
+                dqn.save_model(params.woCloud_dqn_path)
+                ppo.save_model(params.woCloud_ppo_path)
 
             #print('Episode: ', eps, '| Episode Reward: ', episode_reward, '| Episode Length: ', step)
             rewards1.append(eps_r1)
@@ -223,5 +225,5 @@ if __name__ == '__main__':
                 losses.append(loss)
                 #print(loss, type(loss))
 
-        dqn.save_model(params.dqn_path)
-        ppo.save_model(params.ppo_path)
+        dqn.save_model(params.woCloud_dqn_path)
+        ppo.save_model(params.woCloud_ppo_path)
