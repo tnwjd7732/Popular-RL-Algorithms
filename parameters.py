@@ -12,13 +12,13 @@ GPU = False
 
 
 '''training parameters'''
-EPS=500
+EPS=200
 STEP = 20
 GAMMA = 0.99
 
 '''numEdge를 바꾸면 lamb, maxEdge를 함께 조정해주어야 함!'''
-numEdge = 25
-numVeh = 200
+numEdge = 36
+numVeh = 300
 lamb = 2 #시스템 내 클러스터 개수 (K-means에서 K와 같은 역할함)
 maxEdge = int(numEdge/lamb)+3 #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
 CHs = []
@@ -32,11 +32,18 @@ nearest = -1
 ppo_path = './model/ppo1_'+str(int(numEdge))+str(int(lamb))
 dqn_path = './model/dqn1_'+str(int(numEdge))+str(int(lamb))
 
+ppo_single_path = './model/single_ppo1_'+str(int(numEdge))+str(int(lamb))
+dqn_single_path = './model/single_dqn1_'+str(int(numEdge))+str(int(lamb))
+
 woClst_dqn_path = './model/woclst_dqn1_'+str(int(numEdge))+str(int(lamb))
 woClst_ppo_path = './model/woclst_ppo1_'+str(int(numEdge))+str(int(lamb))
 
 woCloud_dqn_path = './model/wocloud_dqn1_'+str(int(numEdge))+str(int(lamb))
 woCloud_ppo_path = './model/wocloud_ppo1_'+str(int(numEdge))+str(int(lamb))
+
+staticClst_dqn_path = './model/staticClst_dqn1_'+str(int(numEdge))+str(int(lamb))
+staticClst_ppo_path = './model/staticClst_ppo1_'+str(int(numEdge))+str(int(lamb))
+
 
 '''global state'''
 state1 = np.zeros(1+3+1) 
@@ -48,6 +55,9 @@ state_dim2 = (maxEdge+1)*2+3+1#ppo
 action_dim1 = 1 #sac
 action_dim2 = maxEdge + 1 #sac
 hidden_dim = 128
+single_state_dim=(maxEdge+1)*2+3
+single_action1_dim=1
+single_action2_dim=maxEdge + 1
 
 '''wocloud dimension'''
 wocloud_state_dim2 = (maxEdge)*2+3+1#ppo
@@ -61,13 +71,15 @@ temp = np.zeros(numEdge)
 resource_avg = 10
 resource_std = 10
 
+glob = 0
+
 '''task information'''
 min_size = 0.1  * Byte
-max_size = 1  * Byte
+max_size = 3  * Byte
 min_cpu = 0.1 
 max_cpu = 3
 min_time = 0.1
-max_time = 2
+max_time = 3
 unitprice_size = 2 # 차량 지불 함수에서 가중치
 unitprice_cpu = 2 # 차량 지불 함수에서 가중치
 wcomp = 10**26 # 소모 함수에서 가중치
@@ -103,12 +115,12 @@ credit_info = np.zeros(numVeh)
 # action1: offloading fraction decision (continous action space 0~1) making from PPO
 # action2: offloaing server decision (discrete action space 0~N, 0: cloud, 1~N: edge servers) making from DQN
 
-dqnlr = 1e-4  # dqn의 Q 네트워크 학습률
+dqnlr = 1e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
 actorlr = 1e-4  # ppo - actor 학습률
 criticlr = 5e-4  # ppo - critic 학습률
 scheduler_step = 1000  # 학습률 스케줄러 단계
-scheduler_gamma = 0.995  # 학습률 스케줄러 감쇠 계수
-dqn_batch = 32  # dqn 배치 크기
+scheduler_gamma = 0.999  # 학습률 스케줄러 감쇠 계수 - 바꾸기 전 0.995
+dqn_batch = 256  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
 ppo_batch = 512  # ppo 배치 크기
 
 
@@ -116,4 +128,4 @@ ppo_batch = 512  # ppo 배치 크기
 
 cloud =1 #default values
 distribution_mode = 0
-repeat = 4
+repeat = 2

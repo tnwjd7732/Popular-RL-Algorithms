@@ -25,7 +25,7 @@ GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
 EPSILON_START = 1.0
 EPSILON_END = 0.0005
-EPSILON_DECAY = 50000
+EPSILON_DECAY = 25000
 
 device_idx = 0
 if params.GPU:
@@ -62,7 +62,6 @@ class EpsilonScheduler():
         delta_frame_idx = self.current_frame_idx - self.ini_frame_idx
         self.epsilon = self.eps_final + (self.eps_start - self.eps_final) * math.exp(-1. * delta_frame_idx / self.eps_decay)
         if frame_idx%999 == 0:
-            print("오잉??")
             params.epsilon_logging.append(self.epsilon)
         
     def get_epsilon(self):
@@ -143,7 +142,7 @@ class replay_buffer:
         if len(self.buffer) < self.buffer_size:
             self.buffer.append(transition(*map(wrap_tensor, samples)))
         else:
-            self.buffer[self.location] = transition(*map(wrap_tensor, samples))
+            self.buffer[int(self.location)] = transition(*map(wrap_tensor, samples))
 
         # Increment the buffer location
         self.location = (self.location + 1) % self.buffer_size

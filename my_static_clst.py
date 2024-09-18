@@ -21,12 +21,10 @@ replay_buffer = my_dqn.replay_buffer(replay_buffer_size)
 
 env = environment.Env()
 cluster = clustering.Clustering()
-
+params.cloud = 1
 ppo = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim) # continous model (offloading fraction - model1)
 dqn = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
 clst = clustering.Clustering()
-
-
 
 parser = argparse.ArgumentParser(description='Train or test neural net motor controller.')
 parser.add_argument('--train', dest='train', action='store_true', default=False)
@@ -129,7 +127,7 @@ if __name__ == '__main__':
         total_step = 0
         for eps in range(params.EPS):
             fail = 0
-            clst.form_cluster()
+            clst.form_static_cluster()
             clst.visualize_clusters()
             state1, state2_temp = env.reset(-1, 1)
             episode_reward = 0
@@ -142,13 +140,15 @@ if __name__ == '__main__':
             for step in range(params.STEP * params.numVeh):
                 total_step += 1
                 #print("state1:", state1)
-                
                 action1 = ppo.choose_action(state1)  # ppo로 offloading fraction 만들기     
+
                 action1_distribution[min(int(action1 * 10), 9)] += 1
+
                 state2 = np.concatenate((state2_temp, action1))
                 params.state2 = state2
+
+                random_number = random.uniform(0, 1)
                 action2 = dqn.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
-                    
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
 
                 # Check for NaN values in r, r1, or r2
@@ -221,5 +221,5 @@ if __name__ == '__main__':
                 losses.append(loss)
                 #print(loss, type(loss))
 
-        dqn.save_model(params.dqn_path)
-        ppo.save_model(params.ppo_path)
+        dqn.save_model(params.staticClst_dqn_path)
+        ppo.save_model(params.staticClst_ppo_path)

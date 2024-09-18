@@ -51,7 +51,7 @@ action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 def plot():
     clear_output(True)
-    fig, ((ax1, ax2, ax3, ax4), (ax5, ax6, ax7, ax8)) = plt.subplots(2, 4, figsize=(20, 8))
+    fig, ((ax1, ax2, ax3, ax4), (ax5, ax6, ax7, ax8)) = plt.subplots(2, 4, figsize=(27, 8))
 
     font_size = params.font_size  # 폰트 크기 설정
 
@@ -59,12 +59,12 @@ def plot():
     ax1.plot(rewards1)
     ax1.set_xlabel('Episode', fontsize=font_size)
     ax1.set_ylabel('Reward1', fontsize=font_size)
-    ax1.tick_params(axis='both', which='major', labelsize=font_size)
+    ax1.tick_params(axis='both', which='major',labelsize=font_size - 5)
 
     ax2.plot(rewards2)
     ax2.set_xlabel('Episode', fontsize=font_size)
     ax2.set_ylabel('Reward2', fontsize=font_size)
-    ax2.tick_params(axis='both', which='major', labelsize=font_size)
+    ax2.tick_params(axis='both', which='major',labelsize=font_size - 5)
 
 
     # 세 번째 서브플롯에 action1 distribution 바 그래프로 그리기
@@ -72,38 +72,38 @@ def plot():
     ax3.bar(indices, action1_distribution[:10])  # 인덱스 0~9까지의 데이터를 바 그래프로
     ax3.set_xlabel('Action [0-9]', fontsize=font_size)
     ax3.set_ylabel('Count', fontsize=font_size)
-    ax3.tick_params(axis='both', which='major', labelsize=font_size)
+    ax3.tick_params(axis='both', which='major', labelsize=font_size - 5)
 
     # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
     ax4.plot(params.wrong_cnt[1:])
     ax4.set_xlabel('Episode', fontsize=font_size)
     ax4.set_ylabel('Invalid action count', fontsize=font_size)
-    ax4.tick_params(axis='both', which='major', labelsize=font_size)
+    ax4.tick_params(axis='both', which='major', labelsize=font_size - 5)
 
     # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
     ax5.plot(params.cloud_cnt[1:])
     ax5.set_xlabel('Episode', fontsize=font_size)
     ax5.set_ylabel('Cloud selection', fontsize=font_size)
-    ax5.tick_params(axis='both', which='major', labelsize=font_size)
+    ax5.tick_params(axis='both', which='major', labelsize=font_size - 5)
 
      # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
     ax6.plot(params.epsilon_logging)
     ax6.set_xlabel('Episode', fontsize=font_size)
     ax6.set_ylabel('Epsilon (DDQN)', fontsize=font_size)
-    ax6.tick_params(axis='both', which='major', labelsize=font_size)
+    ax6.tick_params(axis='both', which='major', labelsize=font_size - 5)
 
      # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
     ax7.plot(success_rate)
     ax7.set_xlabel('Episode', fontsize=font_size)
     ax7.set_ylabel('Success rate', fontsize=font_size)
-    ax7.tick_params(axis='both', which='major', labelsize=font_size)
+    ax7.tick_params(axis='both', which='major', labelsize=font_size - 5)
     
 
     # 두번째 서브플롯에 losses
     ax8.plot(losses)
     ax8.set_xlabel('Episode', fontsize=font_size)
     ax8.set_ylabel('Loss', fontsize=font_size)
-    ax8.tick_params(axis='both', which='major', labelsize=font_size)
+    ax8.tick_params(axis='both', which='major', labelsize=font_size - 5)
     plt.show()
     
 if __name__ == '__main__':

@@ -26,6 +26,83 @@ class Clustering():
         params.CHs = sorted(self.CH)
         params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
 
+    def calculate_distance(self, p1, p2):
+        return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+
+    def find_farthest_servers(self, grid, num_clusters):
+        """그리드에서 가장 먼 서버들 중 lamb개의 서버를 찾는 함수"""
+        max_distance = 0
+        farthest_pairs = []
+        
+        # 그리드에서 가장 거리가 먼 두 서버를 찾음
+        for i in range(len(grid)):
+            for j in range(i+1, len(grid)):
+                distance = self.calculate_distance(grid[i], grid[j])
+                if distance > max_distance:
+                    max_distance = distance
+                    farthest_pairs = [i, j]
+        
+        # 가장 먼 서버 두 개를 먼저 CH로 선택
+        CHs = [farthest_pairs[0], farthest_pairs[1]]
+        
+        # 나머지 lamb-2 개의 CH를 선택 (거리가 먼 서버 위주로)
+        while len(CHs) < num_clusters:
+            max_distance = 0
+            next_ch = None
+            for i in range(len(grid)):
+                if i not in CHs:
+                    # 기존 CH들과의 최소 거리를 계산
+                    min_distance_to_ch = min([self.calculate_distance(grid[i], grid[ch]) for ch in CHs])
+                    if min_distance_to_ch > max_distance:
+                        max_distance = min_distance_to_ch
+                        next_ch = i
+            CHs.append(next_ch)
+        
+        return CHs
+
+    def form_static_cluster(self):
+        params.remains = self.random_list(params.numEdge, params.resource_avg, params.resource_std)
+
+        # params.numEdge는 서버의 수를 나타냄
+        num_servers = params.numEdge
+        # params.lamb는 클러스터 수
+        num_clusters = params.lamb
+
+        # 그리드의 한 변 길이
+        grid_size = int(math.sqrt(num_servers))
+
+        if grid_size * grid_size != num_servers:
+            raise ValueError("numEdge 값이 완전한 정사각형이 아닙니다.")
+        
+        # 그리드를 구성 (서버의 좌표를 저장)
+        grid = [(i // grid_size, i % grid_size) for i in range(num_servers)]
+
+        # 가장 먼 서버들 중 lamb개를 선택해 클러스터 헤드(CH)로 설정
+        CH = self.find_farthest_servers(grid, num_clusters)
+        self.CH = CH  # 클러스터 헤드들
+
+        # 클러스터 멤버 초기화
+        self.cluster_members = {ch_id: [ch_id] for ch_id in CH}  # 헤드 자신을 멤버로 포함
+        
+        # 아직 클러스터에 할당되지 않은 서버들을 추적
+        unassigned_servers = set(range(num_servers)) - set(CH)
+
+        # 각 CH가 가까운 서버들을 초대하는 과정
+        while unassigned_servers:
+            for ch in CH:
+                if not unassigned_servers:
+                    break
+
+                # CH에서 가장 가까운 할당되지 않은 서버를 찾음
+                closest_server = min(unassigned_servers, key=lambda s: self.calculate_distance(grid[ch], grid[s]))
+                
+                # 해당 서버를 클러스터 멤버로 추가하고 할당 목록에서 제거
+                self.cluster_members[ch].append(closest_server)
+                unassigned_servers.remove(closest_server)
+        
+        # 각각의 리스트를 오름차순으로 정렬
+        params.CHs = sorted(self.CH)
+        params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
 
     def form_cluster(self):
         # 초기화
