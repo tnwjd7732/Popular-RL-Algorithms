@@ -46,9 +46,10 @@ class Env():
     def reset(self, step, cloud): # if cloud==0: does not use, if cloud ==1: use cloud
         
         #print("Credit information ---- ")
-        #print(self.credit_info)
+        #print("userplan:", params.userplan, "and!!!", self.credit_info, "and!!!", params.credit)
         #print("remains: ", param.remains_lev)
         ''' 초기 자원 할당, 자원 release 구현 '''
+       
         if step!=-1:
             for i in range (step+1):
                 if self.taskEnd[i] > 0: # 아직 리소스 사용 중, 실패하더라도 -1로 주지말고 max time 동안 자원 차지하고 있도록 해보자
@@ -73,7 +74,8 @@ class Env():
             self.allo_neighbor = np.zeros(self.numVeh * param.STEP) # offload한 서버 번호 기록
             self.plan_info = np.zeros(self.numVeh) # 각 차량들의 플랜 정보를 담고 있음 - 0: basic, 1: premium
             self.credit_info = np.zeros(self.numVeh) # 각 차랭들의 현재 크레딧 정보를 담고있음
-            
+            params.premium_alloc = []  # 프리미엄 유저 자원 할당 기록
+            params.basic_alloc = []  # 베이직 유저 자원 할당 기록
             #print("이전 에피소드에서의 wrong action 횟수: ", self.wrong_cnt)
 
             param.wrong_cnt.append(self.wrong_cnt)
@@ -86,11 +88,19 @@ class Env():
             self.wrong_cnt = 0
             self.cloud_selection = 0
             for i in range(param.numVeh):
-                self.plan_info[i] = random.randint(0,1)
-                if self.plan_info[i] == 0:
-                    self.credit_info[i] = param.basic_init
-                else:
-                    self.credit_info[i] = param.premium_init
+                if params.userplan == 1:  # 크레딧 기반이면 0또는 1로 랜덤하게 설정 (50%)
+                    self.plan_info[i] = random.randint(0, 1)
+                    if self.plan_info[i] == 0:
+                        self.credit_info[i] = param.basic_init
+                    else:
+                        self.credit_info[i] = param.premium_init
+                else:  # 비교 스킴 (고정 1.6배)
+                    if params.credit == 1:
+                        self.plan_info[i] = 0  # 모든 유저가 동일한 자원 할당 방식
+                        self.credit_info[i] = 1.35  # 모든 사용자에게 1.35배 자원 할당
+                    elif params.credit == 2:
+                        self.plan_info[i] = 1  # 모든 유저가 동일한 자원 할당 방식
+                        self.credit_info[i] = 1.75  # 모든 사용자에게 1.75배 자원 할당
             param.credit_info = self.credit_info
                         
         for i in range(params.numEdge):
@@ -123,57 +133,73 @@ class Env():
         cloud_hop = [100]
 
         if myClusterId is not None:
-            myResource = np.array([param.remains[self.nearest]/1])
+            if cloud == 0:
+                myResource = np.array([param.remains[self.nearest]]) #클라우드에서는 리소스 넣을 때 *10
+                myResource *= 10
+            else:
+                myResource = np.array([param.remains[self.nearest]])  
+
             sum = 0 
 
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
             cluster_servers.sort()
             self.cluster = cluster_servers
-
-            if self.nearest in self.cluster:
-                params.glob = self.cluster.index(self.nearest)
-                params.glob += 1
-                #print("clst: ", self.cluster, "안에서 몇번쨰: ", params.glob, "nearest의 리얼 넘버: ", self.nearest)
-
             for server in cluster_servers:
                 sum += param.remains_lev[int(server)]
             avgResource = np.array([sum/len(cluster_servers)])
-            state = np.concatenate((myResource, avgResource, self.taskInfo))
+            if cloud == 0:
+                avgResource *= 10
+            taskstate = np.zeros(3)
+            taskstate = [self.taskInfo[i]*2 for i in range(3)]
+
+            state = np.concatenate((myResource, avgResource, taskstate))
 
             
         else:
             dummy_values = np.full(2, -10)  # 클러스터에 속하지 않은 경우 더미값으로 채움
-            state = np.concatenate((dummy_values, self.taskInfo))
+            state = np.concatenate((dummy_values, taskstate))
 
         if myClusterId is not None:
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
             cluster_servers.sort()
-
-            cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
-            cluster_hop_count = [params.hop_count[i] for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+            if cloud == 0:
+                cluster_remains_lev = [params.remains_lev[i]*10 for i in cluster_servers]
+            else:
+                cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
+            if cloud == 0:
+                cluster_hop_count = [params.hop_count[i] for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+            else:
+                cluster_hop_count = [params.hop_count[i] for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+    
             cluster_size = len(cluster_servers)
             dummy_size = max(0, params.maxEdge - cluster_size)  # 더미값의 크기 결정
             dummy_values = np.full(dummy_size, -10)  # 더미값을 -10으로 설정
             if cloud == 1:
-                state2 = np.concatenate((cloud_resource, cluster_remains_lev, dummy_values,cloud_hop, cluster_hop_count, dummy_values, self.taskInfo))
+                state2 = np.concatenate((cloud_resource, cluster_remains_lev, dummy_values,cloud_hop, cluster_hop_count, dummy_values, taskstate))
             else:
-                state2 = np.concatenate((cluster_remains_lev, dummy_values, cluster_hop_count, dummy_values, self.taskInfo))
+                state2 = np.concatenate((cluster_remains_lev, dummy_values, cluster_hop_count, dummy_values, taskstate))
 
         else:
             if cloud == 1:
                 dummy_values = np.full(params.maxEdge+1, -10)  # 클러스터에 속하지 않은 경우 더미값으로 채움
-                state2 = np.concatenate((dummy_values, dummy_values, self.taskInfo))
+                state2 = np.concatenate((dummy_values, dummy_values, taskstate))
             else:
                 dummy_values = np.full(params.maxEdge, -10)  # 클러스터에 속하지 않은 경우 더미값으로 채움
-                state2 = np.concatenate((dummy_values, dummy_values, self.taskInfo))
+                state2 = np.concatenate((dummy_values, dummy_values, taskstate))
 
         return state, state2
    
     def find_my_cluster(self, server_id):
+        # 먼저 서버가 CH인지 확인하고, CH라면 바로 리턴
+        if server_id in params.CHs:
+            return server_id
+        
+        # 서버가 CH가 아닌 경우, CM으로 속한 클러스터를 확인
         for ch_id in params.CHs:
-            if server_id == ch_id or server_id in params.CMs[ch_id]:
+            if server_id in params.CMs[ch_id]:
                 return ch_id
         return None
+
 
     def calculate_hopcount (self, mob1, mob2):
         diffx = abs(mob1[0] - mob2[0]) / (param.radius*2)
@@ -200,7 +226,9 @@ class Env():
             r2 = 0
 
             if tasktime < Ttotal:  # 실패
-                self.credit_info[vehId] = min(self.credit_info[vehId] + 0.1, param.premium_max if self.plan_info[vehId] else param.basic_max)
+                reward = 0
+                if params.userplan == 1: #크레딧 기반에서만 바꾸기
+                    self.credit_info[vehId] = min(self.credit_info[vehId] + 0.1, param.premium_max if self.plan_info[vehId] else param.basic_max)
                 
                 # Determine the cause of failure and assign penalties
                 if Tloc > tasktime and Toff > tasktime:
@@ -214,8 +242,8 @@ class Env():
                         r1 = min(max(-3, Tloc-tasktime), -1)
                     r2 = 1
                 elif Toff > tasktime:
-                    if param.remains[self.nearest] >= optimal_resource_off:
-                        r1 = -3 #자기가 하면 됐는데도 보낸거니까 잘못한거임
+                    if param.remains[self.nearest] >= optimal_resource_off+optimal_resource_loc:
+                        r1 = -1.5 #자기가 하면 됐는데도 보낸거니까 잘못한거임
                     else:
                         r1 = 1
                     r2 = -3
@@ -223,7 +251,8 @@ class Env():
       
                 self.taskEnd[stepnum] = tasktime
             else:  # 성공
-                self.credit_info[vehId] = max(self.credit_info[vehId] - 0.1, param.premium_min if self.plan_info[vehId] else param.basic_min)
+                if params.userplan == 1:
+                    self.credit_info[vehId] = max(self.credit_info[vehId] - 0.1, param.premium_min if self.plan_info[vehId] else param.basic_min)
                 cost_weight = 1.5 if self.plan_info[vehId] else 1.0
                 profit = taskcpu * param.unitprice_cpu * cost_weight + tasksize * param.unitprice_size * cost_weight
                 energy_coeff = 10 ** -26
@@ -232,7 +261,7 @@ class Env():
                 cost_comp = param.wcomp * (cost_comp1 + cost_comp2)
                 cost_trans = param.cloud_trans_price if action2 == 0 else param.wtrans * (1 - action1) * tasksize * hopcount
                 cost = cost_comp + cost_trans
-                reward = profit - cost[0]
+                reward = profit - cost[0] + tasktime - Ttotal
                 
                 # Adjust reward based on revenue
                 reward = max(1, reward / 2)  # Scale down the reward to make it manageable
@@ -246,15 +275,16 @@ class Env():
         if cloud == 0:
             action2+=1
         
+        # 기존 step 함수
         vehId = stepnum % param.numVeh
         current_credit = self.credit_info[vehId]
         tasksize, taskcpu, tasktime = param.task
 
+        # Calculate local and offloading resources
         local_amount = taskcpu * action1
         off_amount = taskcpu * (1 - action1)
         optimal_resource_loc = local_amount / tasktime if local_amount else 0
         optimal_resource_off = off_amount / tasktime if off_amount else 0
-
         optimal_resource_loc = min(param.remains[self.nearest], optimal_resource_loc * current_credit)
 
         #print(f"--> fraction: {action1}, offloading decision: {action2}")
@@ -295,6 +325,8 @@ class Env():
                     optimal_resource_off = min(param.remains[action_globid_ver], optimal_resource_off * current_credit)
 
                 hopcount = self.calculate_hopcount(param.edge_pos[self.nearest], param.edge_pos[action_globid_ver])
+                param.hop_counts.append(hopcount)
+
                 bandwidth = np.random.uniform(0.07, 0.1)
                 Ttrans = (tasksize * (1 - action1)) / (bandwidth * 1000) * hopcount
                 Tcomp = off_amount / optimal_resource_off if action1 != 1 else 0
@@ -329,7 +361,8 @@ class Env():
             reward = 0
             r1 = 0
             if tasktime < Ttotal:  # 실패
-                self.credit_info[vehId] = min(self.credit_info[vehId] + 0.1, param.premium_max if self.plan_info[vehId] else param.basic_max)
+                if params.userplan == 1:
+                    self.credit_info[vehId] = min(self.credit_info[vehId] + 0.1, param.premium_max if self.plan_info[vehId] else param.basic_max)
 
                 # 실패에 대한 책임을 r1에게 부여
                 if Tloc > tasktime and Toff > tasktime:
@@ -340,7 +373,7 @@ class Env():
                     if math.isinf(Tloc):
                         r1 = -3  # 할 수 없으면서 큰 fraction을 선택한 경우
                     else:
-                        r1 = min(max(-3, Tloc-tasktime), -1)
+                        r1 = -3 #min(max(-3, Tloc-tasktime), -1)
                 elif Toff > tasktime:
                     # action2가 주로 잘못했을 때도 이제 r1에게 부여
                     if param.remains[self.nearest] >= optimal_resource_off:
@@ -350,7 +383,8 @@ class Env():
 
                 self.taskEnd[stepnum] = tasktime
             else:  # 성공
-                self.credit_info[vehId] = max(self.credit_info[vehId] - 0.1, param.premium_min if self.plan_info[vehId] else param.basic_min)
+                if params.userplan == 1:
+                    self.credit_info[vehId] = max(self.credit_info[vehId] - 0.1, param.premium_min if self.plan_info[vehId] else param.basic_min)
                 cost_weight = 1.5 if self.plan_info[vehId] else 1.0
                 profit = taskcpu * param.unitprice_cpu * cost_weight + tasksize * param.unitprice_size * cost_weight
                 energy_coeff = 10 ** -26
@@ -359,7 +393,7 @@ class Env():
                 cost_comp = param.wcomp * (cost_comp1 + cost_comp2)
                 cost_trans = param.cloud_trans_price if action2 == 0 else param.wtrans * (1 - action1) * tasksize * hopcount
                 cost = cost_comp + cost_trans
-                reward = profit - cost[0]
+                reward = profit - cost[0] +  tasktime - Ttotal
 
                 # 성공 시 리워드도 r1에 모두 부여
                 reward = max(1, reward / 2)  # 보상 스케일 조정
@@ -462,6 +496,7 @@ class Env():
         else:
             Tloc = local_amount/optimal_resource_loc
         hopcount = self.calculate_hopcount(param.edge_pos[self.nearest], param.edge_pos[action2])
+        param.hop_counts.append(hopcount)
         bandwidth = np.random.uniform(0.07, 0.1)
         Ttrans = (tasksize*(1-action1))/(bandwidth*1000)*hopcount
         if action1 == 1: 
@@ -474,19 +509,21 @@ class Env():
 
         if tasktime < Ttotal: #failure
             reward = 0
-            if self.plan_info[vehId] == 0: #basic
-                self.credit_info[vehId] = min(self.credit_info[vehId]+0.1, param.basic_max)
-            else:
-                self.credit_info[vehId] = min(self.credit_info[vehId]+0.1, param.premium_max)
+            if params.userplan == 1:
+                if self.plan_info[vehId] == 0: #basic
+                    self.credit_info[vehId] = min(self.credit_info[vehId]+0.1, param.basic_max)
+                else:
+                    self.credit_info[vehId] = min(self.credit_info[vehId]+0.1, param.premium_max)
             
             self.allo_loc[stepnum] = self.nearest       
             self.allo_neighbor[stepnum] = action2     
             self.taskEnd[stepnum] = tasktime #실패한 경우 할당받은 자원 사용 시간 = latency 요구사항
         else: # 성공 -- (이웃 엣지서버 쓴 경우)
-            if self.plan_info[vehId] == 0: #basic
-                self.credit_info[vehId] = max(self.credit_info[vehId]-0.1, param.basic_min)
-            else:
-                self.credit_info[vehId] = max(self.credit_info[vehId]-0.1, param.premium_min)
+            if params.userplan == 1:
+                if self.plan_info[vehId] == 0: #basic
+                    self.credit_info[vehId] = max(self.credit_info[vehId]-0.1, param.basic_min)
+                else:
+                    self.credit_info[vehId] = max(self.credit_info[vehId]-0.1, param.premium_min)
 
             plan = self.plan_info[int(vehId)]
             if plan == 0:
@@ -503,7 +540,7 @@ class Env():
             cost = cost_comp + cost_trans
             
 
-            reward = profit - cost #objective function of original problem
+            reward = profit - cost + tasktime - Ttotal#objective function of original problem
             #reward = max(0.1, reward /5) #old one
 
             # Adjust reward based on revenue

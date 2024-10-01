@@ -13,17 +13,19 @@ GPU = False
 
 '''training parameters'''
 EPS=200
-STEP = 20
+STEP = 10
 GAMMA = 0.99
 
 '''numEdge를 바꾸면 lamb, maxEdge를 함께 조정해주어야 함!'''
 numEdge = 36
-numVeh = 300
+numVeh = 400
 lamb = 2 #시스템 내 클러스터 개수 (K-means에서 K와 같은 역할함)
-maxEdge = int(numEdge/lamb)+3 #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
+maxEdge = int(numEdge/lamb)+4 #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
 CHs = []
 CMs = [[]]
 nearest = -1
+
+userplan=1
 
 
 '''model path'''
@@ -79,7 +81,7 @@ max_size = 3  * Byte
 min_cpu = 0.1 
 max_cpu = 3
 min_time = 0.1
-max_time = 3
+max_time = 2
 unitprice_size = 2 # 차량 지불 함수에서 가중치
 unitprice_cpu = 2 # 차량 지불 함수에서 가중치
 wcomp = 10**26 # 소모 함수에서 가중치
@@ -102,13 +104,15 @@ basic_max = 1.6
 basic_init = (basic_min+basic_max)/2 #now: 1.4
 
 premium_min = 1.6
-premium_max = 2.4
+premium_max = 2.0
 premium_init = (premium_max+premium_min)/2 #now: 2
 cloud_trans_price = 2.5
 '''plot parameters '''
 font_size = 18
 credit_info = np.zeros(numVeh) 
 
+credit = 0
+#0: our scheme, 1: only cheap one, 2: only expensive one
 
 # model hyper parameters
 # we use two RL model for making two actions 
@@ -128,4 +132,6 @@ ppo_batch = 512  # ppo 배치 크기
 
 cloud =1 #default values
 distribution_mode = 0
-repeat = 2
+repeat = 1
+
+hop_counts= []

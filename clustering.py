@@ -25,7 +25,6 @@ class Clustering():
         # 각각의 리스트를 오름차순으로 정렬
         params.CHs = sorted(self.CH)
         params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
-
     def calculate_distance(self, p1, p2):
         return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
@@ -65,7 +64,6 @@ class Clustering():
 
         # params.numEdge는 서버의 수를 나타냄
         num_servers = params.numEdge
-        # params.lamb는 클러스터 수
         num_clusters = params.lamb
 
         # 그리드의 한 변 길이
@@ -77,28 +75,46 @@ class Clustering():
         # 그리드를 구성 (서버의 좌표를 저장)
         grid = [(i // grid_size, i % grid_size) for i in range(num_servers)]
 
-        # 가장 먼 서버들 중 lamb개를 선택해 클러스터 헤드(CH)로 설정
-        CH = self.find_farthest_servers(grid, num_clusters)
-        self.CH = CH  # 클러스터 헤드들
-
         # 클러스터 멤버 초기화
-        self.cluster_members = {ch_id: [ch_id] for ch_id in CH}  # 헤드 자신을 멤버로 포함
-        
-        # 아직 클러스터에 할당되지 않은 서버들을 추적
-        unassigned_servers = set(range(num_servers)) - set(CH)
+        self.cluster_members = {}
 
-        # 각 CH가 가까운 서버들을 초대하는 과정
-        while unassigned_servers:
-            for ch in CH:
-                if not unassigned_servers:
-                    break
+        # lamb에 따른 클러스터링 방식
+        if num_clusters == 2:
+            # 가로로 나누는 클러스터링
+            mid = grid_size // 2
+            upper_cluster = [i for i in range(num_servers) if grid[i][0] < mid]  # 위쪽 클러스터
+            lower_cluster = [i for i in range(num_servers) if grid[i][0] >= mid]  # 아래쪽 클러스터
+            
+            # 클러스터 헤드 설정 (각 클러스터의 첫 번째 서버)
+            CH = [upper_cluster[0], lower_cluster[0]]
+            self.CH = CH
 
-                # CH에서 가장 가까운 할당되지 않은 서버를 찾음
-                closest_server = min(unassigned_servers, key=lambda s: self.calculate_distance(grid[ch], grid[s]))
-                
-                # 해당 서버를 클러스터 멤버로 추가하고 할당 목록에서 제거
-                self.cluster_members[ch].append(closest_server)
-                unassigned_servers.remove(closest_server)
+            # 클러스터 멤버 구성
+            self.cluster_members[CH[0]] = upper_cluster
+            self.cluster_members[CH[1]] = lower_cluster
+
+        elif num_clusters == 4:
+            # +형태로 나누는 클러스터링
+            mid_x = grid_size // 2
+            mid_y = grid_size // 2
+
+            cluster_1 = [i for i in range(num_servers) if grid[i][0] < mid_x and grid[i][1] < mid_y]  # 왼쪽 위
+            cluster_2 = [i for i in range(num_servers) if grid[i][0] < mid_x and grid[i][1] >= mid_y]  # 오른쪽 위
+            cluster_3 = [i for i in range(num_servers) if grid[i][0] >= mid_x and grid[i][1] < mid_y]  # 왼쪽 아래
+            cluster_4 = [i for i in range(num_servers) if grid[i][0] >= mid_x and grid[i][1] >= mid_y]  # 오른쪽 아래
+            
+            # 클러스터 헤드 설정 (각 클러스터의 첫 번째 서버)
+            CH = [cluster_1[0], cluster_2[0], cluster_3[0], cluster_4[0]]
+            self.CH = CH
+
+            # 클러스터 멤버 구성
+            self.cluster_members[CH[0]] = cluster_1
+            self.cluster_members[CH[1]] = cluster_2
+            self.cluster_members[CH[2]] = cluster_3
+            self.cluster_members[CH[3]] = cluster_4
+
+        else:
+            raise ValueError("지원되지 않는 lamb 값입니다. lamb는 2 또는 4이어야 합니다.")
         
         # 각각의 리스트를 오름차순으로 정렬
         params.CHs = sorted(self.CH)

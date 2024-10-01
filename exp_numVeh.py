@@ -80,14 +80,17 @@ def run_experiment(numVeh, repeat):
         state1, state2_temp = env.reset(-1, 1)
         episode_reward = 0
 
-        for step in range(params.STEP * params.numVeh):
-           
-            action1 = ppo_.choose_action(state1)  # ppo로 offloading fraction 만들기     
-            state2 = np.concatenate((state2_temp, action1))
-            params.state2 = state2
-            action2 = dqn_.choose_action(state2, 0) 
- # 0 means training phase (take epsilon greedy)
-            s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
+        for step in range(params.STEP * numVeh):
+            if params.remains[params.nearest] > params.resource_avg:
+                action1, action2 = nearest.choose_action()
+                s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)  # 두개의 action 가지고 step
+            else:
+
+                action1 = ppo_.choose_action(state1)  # ppo로 offloading fraction 만들기
+                state2 = np.concatenate((state2_temp, action1))
+                params.state2 = state2
+                action2 = dqn_.choose_action(state2, 1)
+                s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
 
             state1 = s1_
             state2 = s2_
@@ -267,7 +270,7 @@ def plot(results, veh_range):
     plt.show()
 
 if __name__ == '__main__':
-    veh_range = range(50, 401, 50)
+    veh_range = range(50, 401, 100)
     repeat = params.repeat
     final_results = {
         'our_succ': [],

@@ -79,18 +79,15 @@ def run_experiment(resource_std, repeat):
         '''our scheme'''
         fail = 0
         clst.form_cluster()
-        ##clst.visualize_clusters()
+        #clst.visualize_clusters()
         state1, state2_temp = env.reset(-1, 1)
         episode_reward = 0
 
         for step in range(params.STEP * params.numVeh):
-            #print("remains: ", params.remains)
-        
-            action1 = ppo_.choose_action(state1)  # ppo로 offloading fraction 만들기     
+            action1 = ppo_.choose_action(state1)  # ppo로 offloading fraction 만들기
             state2 = np.concatenate((state2_temp, action1))
             params.state2 = state2
-            action2 = dqn_.choose_action(state2, 0) 
-
+            action2 = dqn_.choose_action(state2, 1)
             s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
 
             state1 = s1_
@@ -276,7 +273,7 @@ def plot(results, std_range):
     plt.show()
 
 if __name__ == '__main__':
-    std_range = np.arange(0, 10.1, 2.5)
+    std_range = np.arange(0, 20.1, 4)
     repeat = params.repeat
     final_results = {
       'our_succ': [],
