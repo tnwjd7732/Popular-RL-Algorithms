@@ -11,6 +11,7 @@ import no_RL_scheme as schemes
 import clustering
 import my_ppo
 import my_dqn
+import my_dqn2
 
 def run_experiment(resource_std, repeat):
     params.resource_std = resource_std
@@ -46,7 +47,7 @@ def run_experiment(resource_std, repeat):
 
     params.cloud = 0
     ppo_wocloud_= my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)  # continous model (offloading fraction - model1)
-    dqn_wocloud_ = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
+    dqn_wocloud_ = my_dqn2.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
 
     ppo_wocloud = ppo_wocloud_.load_model(params.woCloud_ppo_path)
     dqn_wocloud = dqn_wocloud_.load_model(params.woCloud_dqn_path)
@@ -98,7 +99,7 @@ def run_experiment(resource_std, repeat):
                 fail += 1
 
         success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
-        results['our_succ'].append(success_ratio)
+        results['our_succ'].append(success_ratio)        
         results['our_reward'].append(episode_reward)
 
         '''RL wo clst scheme'''

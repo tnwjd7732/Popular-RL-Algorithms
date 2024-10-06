@@ -97,7 +97,7 @@ def run_experiment(numVeh, repeat):
                 fail += 1
 
         success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['our_succ'].append(success_ratio)
+        results['our_succ'].append(success_ratio)        
         results['our_reward'].append(episode_reward)
 
         '''RL with static clst scheme'''
@@ -268,7 +268,7 @@ def plot(results, veh_range):
     plt.show()
 
 if __name__ == '__main__':
-    veh_range = range(50, 401,100)
+    veh_range = range(200, 501, 50)
     repeat = params.repeat
     final_results = {
         'our_succ': [],

@@ -67,26 +67,34 @@ class EpsilonScheduler():
     def get_epsilon(self):
         #print("epsilon:", self.epsilon)
         return self.epsilon
+
 class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
         super(QNetwork, self).__init__()
         
         # Conv1D for combined remain and hop information
-        # in_channels = 2 because we combine remain and hop
-        self.conv = nn.Conv1d(in_channels=2, out_channels=16, kernel_size=4, stride=1, padding=0)
+        # in_channels = 2 because we combine remain and hop (2 values per server)
+        self.conv_remain_hop = nn.Conv1d(in_channels=2, out_channels=32, kernel_size=2, stride=2, padding=0)
+
+        # Conv1D for task information (3 task values)
+        self.conv_task = nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=0)
         
         self.flatten = nn.Flatten()
 
         if params.cloud == 1:
-            flattened_conv_out_size = 16 * (params.maxEdge + 1 - 3)
+            conv_output_length = (params.maxEdge + 1) // 2  # Adjust for stride 2
         else: 
-            flattened_conv_out_size = 16 * (params.maxEdge - 3)
+            conv_output_length = params.maxEdge // 2  # Adjust for stride 2
+
+        flattened_conv_out_size_remain_hop = 32 * conv_output_length
+        flattened_conv_out_size_task = 32  # Conv1D will produce one value because kernel_size=3 with stride=1
+
+        self.dense_remain_hop = nn.Linear(flattened_conv_out_size_remain_hop, 1)
+        self.dense_task = nn.Linear(flattened_conv_out_size_task, 1)
         
-        self.dense = nn.Linear(flattened_conv_out_size, 1)
-        
-        # Fully connected layers after conv and additional task information
-        combined_input_size = 1 + 3  # 1 for fraction, 3 for task information
-        combined_input_size += 1  # Adding output size of the dense layer
+        # Fully connected layers after conv and additional task and fraction information
+        # combined_input_size: dense_remain_hop + dense_task + 1 (fraction)
+        combined_input_size = 1 + 1 + 1  # 1 from dense_remain_hop + 1 from dense_task + 1 for fraction
         self.linear1 = nn.Linear(combined_input_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
         self.linear3 = nn.Linear(hidden_size, hidden_size)
@@ -98,24 +106,31 @@ class QNetwork(nn.Module):
         if params.cloud == 1:
             remain = state[:, :params.maxEdge+1].unsqueeze(1)
             hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
-            taskandfrac = state[:, (params.maxEdge+1)*2:]  # Last 4 values (3 task + 1 fraction)
+            task = state[:, (params.maxEdge+1)*2:(params.maxEdge+1)*2+3].unsqueeze(1)  # 3 task values
+            fraction = state[:, -1].unsqueeze(1)  # fraction is the last value
         else: 
             remain = state[:, :params.maxEdge].unsqueeze(1)
             hop = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
-            taskandfrac = state[:, (params.maxEdge)*2:]  # Last 4 values (3 task + 1 fraction)
+            task = state[:, (params.maxEdge)*2:(params.maxEdge)*2+3].unsqueeze(1)  # 3 task values
+            fraction = state[:, -1].unsqueeze(1)  # fraction is the last value
 
         # Concatenate remain and hop for each server along the channel dimension
         combined_remain_hop = torch.cat((remain, hop), dim=1)  # Shape: (batch_size, 2, maxEdge or maxEdge+1)
 
-        # Apply conv layer on the combined remain and hop information
-        x = F.relu(self.conv(combined_remain_hop))
-        x = self.flatten(x)
+        # Apply conv layer on remain and hop
+        x_remain_hop = F.relu(self.conv_remain_hop(combined_remain_hop))
+        x_remain_hop = self.flatten(x_remain_hop)
+        x_remain_hop = F.relu(self.dense_remain_hop(x_remain_hop))
         
-        # Pass through dense layer
-        x = F.relu(self.dense(x))
-        
-        # Combine with taskandfrac and pass through fully connected layers
-        x = torch.cat((x, taskandfrac), dim=1)  # Combine conv output with task and fraction data
+        # Apply conv layer on task information
+        x_task = F.relu(self.conv_task(task))
+        x_task = self.flatten(x_task)
+        x_task = F.relu(self.dense_task(x_task))
+
+        # Combine remain-hop, task, and fraction
+        x = torch.cat((x_remain_hop, x_task, fraction), dim=1)  # Combine conv output with task and fraction data
+
+        # Pass through fully connected layers
         x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
         x = F.relu(self.linear3(x))
@@ -123,6 +138,7 @@ class QNetwork(nn.Module):
         q_values = self.output(x)
         
         return q_values
+
 
 
 transition = namedtuple('transition', 'state, next_state, action, reward, is_terminal')

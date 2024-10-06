@@ -94,17 +94,17 @@ class Env():
                         self.credit_info[i] = param.basic_init
                     else:
                         self.credit_info[i] = param.premium_init
-                else:  # 비교 스킴 (고정 1.6배)
+                else:  # 비교 스킴 (고정 1.62배)
                     if params.credit == 1:
                         self.plan_info[i] = 0  # 모든 유저가 동일한 자원 할당 방식
-                        self.credit_info[i] = 1.35  # 모든 사용자에게 1.35배 자원 할당
+                        self.credit_info[i] = 1.22  # 모든 사용자에게 1.35배 자원 할당
                     elif params.credit == 2:
                         self.plan_info[i] = 1  # 모든 유저가 동일한 자원 할당 방식
-                        self.credit_info[i] = 1.75  # 모든 사용자에게 1.75배 자원 할당
+                        self.credit_info[i] = 1.62  # 모든 사용자에게 1.75배 자원 할당
             param.credit_info = self.credit_info
                         
         for i in range(params.numEdge):
-            params.remains_lev[i] = int(params.remains[i]/1)
+            params.remains_lev[i] = int(params.remains[i]/10)
         #print("remains level: ", params.remains_lev)       
 
         ''' 작업 초기화 '''
@@ -135,7 +135,7 @@ class Env():
         if myClusterId is not None:
             if cloud == 0:
                 myResource = np.array([param.remains[self.nearest]]) #클라우드에서는 리소스 넣을 때 *10
-                myResource *= 10
+                myResource *= 1
             else:
                 myResource = np.array([param.remains[self.nearest]])  
 
@@ -148,9 +148,9 @@ class Env():
                 sum += param.remains_lev[int(server)]
             avgResource = np.array([sum/len(cluster_servers)])
             if cloud == 0:
-                avgResource *= 10
+                avgResource *= 1
             taskstate = np.zeros(3)
-            taskstate = [self.taskInfo[i]*2 for i in range(3)]
+            taskstate = [self.taskInfo[i] for i in range(3)]
 
             state = np.concatenate((myResource, avgResource, taskstate))
 
@@ -163,7 +163,7 @@ class Env():
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
             cluster_servers.sort()
             if cloud == 0:
-                cluster_remains_lev = [params.remains_lev[i]*10 for i in cluster_servers]
+                cluster_remains_lev = [params.remains_lev[i]*1 for i in cluster_servers]
             else:
                 cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
             if cloud == 0:
@@ -259,7 +259,7 @@ class Env():
                 cost_comp1 = energy_coeff * optimal_resource_loc ** 2 * taskcpu * action1
                 cost_comp2 = energy_coeff * optimal_resource_off ** 2 * taskcpu * (1 - action1)
                 cost_comp = param.wcomp * (cost_comp1 + cost_comp2)
-                cost_trans = param.cloud_trans_price if action2 == 0 else param.wtrans * (1 - action1) * tasksize * hopcount
+                cost_trans = param.cloud_trans_price * (1 - action1) * tasksize if action2 == 0 else param.wtrans * (1 - action1) * tasksize * hopcount
                 cost = cost_comp + cost_trans
                 reward = profit - cost[0] + tasktime - Ttotal
                 

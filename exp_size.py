@@ -66,7 +66,7 @@ def run_experiment(task_size, repeat, env, ppo_, dqn_, ppo_woclst_, dqn_woclst_,
                 fail += 1
 
         success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
-        results['our_succ'].append(success_ratio)
+        results['our_succ'].append(success_ratio)        
         results['our_reward'].append(episode_reward)
 
         '''RL wo clst scheme'''

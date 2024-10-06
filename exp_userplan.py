@@ -21,10 +21,10 @@ def run_experiment(numVeh, repeat, credit_based=True, fixed_allocation=None):
         'premium_reward': [],
         'basic_succ': [],
         'basic_reward': [],
-        'nocredit_succ_1.3': [],  # 1.3 자원 할당 스킴에 대한 성공률
-        'nocredit_reward_1.3': [],  # 1.3 자원 할당 스킴에 대한 리워드
-        'nocredit_succ_1.7': [],  # 1.7 자원 할당 스킴에 대한 성공률
-        'nocredit_reward_1.7': [],  # 1.7 자원 할당 스킴에 대한 리워드
+        'nocredit_succ_1.22': [],  # 1.22 자원 할당 스킴에 대한 성공률
+        'nocredit_reward_1.22': [],  # 1.22 자원 할당 스킴에 대한 리워드
+        'nocredit_succ_1.62': [],  # 1.62 자원 할당 스킴에 대한 성공률
+        'nocredit_reward_1.62': [],  # 1.62 자원 할당 스킴에 대한 리워드
         'premium_credit_avg': [],  # 프리미엄 유저 크레딧 평균
         'premium_credit_min': [],  # 프리미엄 유저 크레딧 최소값
         'premium_credit_max': [],  # 프리미엄 유저 크레딧 최대값
@@ -83,7 +83,7 @@ def run_experiment(numVeh, repeat, credit_based=True, fixed_allocation=None):
                     basic_cnt += 1
                     if r == 0:
                         fail_basic += 1
-            else:  # 고정 자원 할당 스킴 (1.3 또는 1.7에 따라)
+            else:  # 고정 자원 할당 스킴 (1.22 또는 1.62에 따라)
                 action1 = ppo_.choose_action(state1)
                 state2 = np.concatenate((state2_temp, action1))
                 params.state2 = state2
@@ -116,12 +116,12 @@ def run_experiment(numVeh, repeat, credit_based=True, fixed_allocation=None):
             results['basic_reward'].append(basic_reward)
 
         else:
-            if fixed_allocation == 1.3:
-                results['nocredit_succ_1.3'].append(success_ratio_nocredit)
-                results['nocredit_reward_1.3'].append(nocredit_reward)
-            elif fixed_allocation == 1.7:
-                results['nocredit_succ_1.7'].append(success_ratio_nocredit)
-                results['nocredit_reward_1.7'].append(nocredit_reward)
+            if fixed_allocation == 1.22:
+                results['nocredit_succ_1.22'].append(success_ratio_nocredit)
+                results['nocredit_reward_1.22'].append(nocredit_reward)
+            elif fixed_allocation == 1.62:
+                results['nocredit_succ_1.62'].append(success_ratio_nocredit)
+                results['nocredit_reward_1.62'].append(nocredit_reward)
 
         # 크레딧 기반 스킴이라면 프리미엄과 베이직 크레딧 평균/최소/최대도 저장
         if credit_based:
@@ -161,8 +161,8 @@ def plot_comparison(results, veh_range):
     # Success rate comparison between premium, basic, and no-credit users
     ax1.plot(veh_range, results['premium_succ'], label="Premium User Success", linewidth=2)
     ax1.plot(veh_range, results['basic_succ'], label="Basic User Success", linewidth=2)
-    ax1.plot(veh_range, results['nocredit_succ_1.3'], label="No-Credit Scheme Success (1.3x)", linewidth=2)
-    ax1.plot(veh_range, results['nocredit_succ_1.7'], label="No-Credit Scheme Success (1.7x)", linewidth=2)
+    ax1.plot(veh_range, results['nocredit_succ_1.22'], label="No-Credit Scheme Success (1.22x)", linewidth=2)
+    ax1.plot(veh_range, results['nocredit_succ_1.62'], label="No-Credit Scheme Success (1.62x)", linewidth=2)
 
     ax1.set_xlabel('Number of Vehicles', fontsize=font_size)
     ax1.legend()
@@ -174,8 +174,8 @@ def plot_comparison(results, veh_range):
     # 크레딧 기반 리워드 합산 (프리미엄 + 베이직)
     premium_reward = np.array(results['premium_reward'])
     basic_reward = np.array(results['basic_reward'])
-    nocredit_reward_1_3 = np.array(results['nocredit_reward_1.3'])
-    nocredit_reward_1_7 = np.array(results['nocredit_reward_1.7'])
+    nocredit_reward_1_22 = np.array(results['nocredit_reward_1.22'])
+    nocredit_reward_1_62 = np.array(results['nocredit_reward_1.62'])
 
     # Stacked bar chart: 크레딧 기반의 프리미엄과 베이직 기여도
     bar_width = 20  # 막대의 너비 조절
@@ -183,8 +183,8 @@ def plot_comparison(results, veh_range):
     ax2.bar(veh_range, basic_reward, bottom=premium_reward, label="Basic User Reward", color="orange", width=bar_width)
 
     # 크레딧 없는 방안의 리워드
-    ax2.plot(veh_range, nocredit_reward_1_3, label="No-Credit Scheme Reward (1.3x)", color="green", linewidth=2)
-    ax2.plot(veh_range, nocredit_reward_1_7, label="No-Credit Scheme Reward (1.7x)", color="red", linewidth=2)
+    ax2.plot(veh_range, nocredit_reward_1_22, label="No-Credit Scheme Reward (1.22x)", color="green", linewidth=2)
+    ax2.plot(veh_range, nocredit_reward_1_62, label="No-Credit Scheme Reward (1.62x)", color="red", linewidth=2)
 
     ax2.set_xlabel('Number of Vehicles', fontsize=font_size)
     ax2.legend()
@@ -216,7 +216,7 @@ def plot_comparison(results, veh_range):
     plt.show()
 
 if __name__ == '__main__':
-    veh_range = range(50, 401, 100)  # 차량 수 범위
+    veh_range = range(200, 501, 50)  # 차량 수 범위
     repeat = params.repeat
 
     final_results = {
@@ -224,10 +224,10 @@ if __name__ == '__main__':
         'premium_reward': [],
         'basic_succ': [],
         'basic_reward': [],
-        'nocredit_succ_1.3': [],
-        'nocredit_reward_1.3': [],
-        'nocredit_succ_1.7': [],
-        'nocredit_reward_1.7': [],
+        'nocredit_succ_1.22': [],
+        'nocredit_reward_1.22': [],
+        'nocredit_succ_1.62': [],
+        'nocredit_reward_1.62': [],
         'premium_credit_avg': [],  # 프리미엄 유저 크레딧 평균
         'premium_credit_min': [],  # 프리미엄 유저 크레딧 최소값
         'premium_credit_max': [],  # 프리미엄 유저 크레딧 최대값
@@ -253,19 +253,20 @@ if __name__ == '__main__':
         final_results['basic_credit_min'].append(avg_results_credit['basic_credit_min'])
         final_results['basic_credit_max'].append(avg_results_credit['basic_credit_max'])
 
-        # 고정 자원 할당 스킴 실행 (1.3 자원 할당)
+        # 고정 자원 할당 스킴 실행 (1.22 자원 할당)
         params.credit = 1
         params.userplan = 0
-        avg_results_nocredit_1_3 = run_experiment(numVeh, repeat, credit_based=False, fixed_allocation=1.3)
-        final_results['nocredit_succ_1.3'].append(avg_results_nocredit_1_3['nocredit_succ_1.3'])
-        final_results['nocredit_reward_1.3'].append(avg_results_nocredit_1_3['nocredit_reward_1.3'])
+        avg_results_nocredit_1_22 = run_experiment(numVeh, repeat, credit_based=False, fixed_allocation=1.22)
+        final_results['nocredit_succ_1.22'].append(avg_results_nocredit_1_22['nocredit_succ_1.22'])
+        final_results['nocredit_reward_1.22'].append(avg_results_nocredit_1_22['nocredit_reward_1.22'])
 
-        # 고정 자원 할당 스킴 실행 (1.7 자원 할당)
+        # 고정 자원 할당 스킴 실행 (1.62 자원 할당)
         params.credit = 2
         params.userplan = 0
-        avg_results_nocredit_1_7 = run_experiment(numVeh, repeat, credit_based=False, fixed_allocation=1.7)
-        final_results['nocredit_succ_1.7'].append(avg_results_nocredit_1_7['nocredit_succ_1.7'])
-        final_results['nocredit_reward_1.7'].append(avg_results_nocredit_1_7['nocredit_reward_1.7'])
+        avg_results_nocredit_1_62 = run_experiment(numVeh, repeat, credit_based=False, fixed_allocation=1.62)
+        final_results['nocredit_succ_1.62'].append(avg_results_nocredit_1_62['nocredit_succ_1.62'])
+        final_results['nocredit_reward_1.62'].append(avg_results_nocredit_1_62['nocredit_reward_1.62'])
 
     # 성공률, 리워드, 크레딧 평균 및 min, max 비교 시각화
     plot_comparison(final_results, veh_range)
+

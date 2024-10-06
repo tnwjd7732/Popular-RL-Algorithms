@@ -104,7 +104,7 @@ def run_experiment(task_time, repeat):
                 fail += 1
 
         success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
-        results['our_succ'].append(success_ratio)
+        results['our_succ'].append(success_ratio)        
         results['our_reward'].append(episode_reward)
 
         '''RL wo clst scheme'''
@@ -276,7 +276,7 @@ def plot(results, time_range):
     plt.show()
 
 if __name__ == '__main__':
-    time_range = np.arange(0.7, 3.1, 0.5)
+    time_range = np.arange(1, 3.1, 0.5)
     repeat = params.repeat
     final_results = {
         'our_succ': [],

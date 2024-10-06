@@ -183,7 +183,7 @@ def plot_overhead(results, veh_range):
 
     plt.show()
 if __name__ == '__main__':
-    veh_range = range(50, 401, 100)  # 차량 수 범위
+    veh_range = range(50, 501, 100)  # 차량 수 범위
     repeat = params.repeat  # 반복 횟수 (실험 반복 수)
     final_overhead_results = {
         'our_overhead': [],
