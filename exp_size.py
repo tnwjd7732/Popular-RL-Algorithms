@@ -11,6 +11,8 @@ import no_RL_scheme as schemes
 import clustering
 import my_ppo
 import my_dqn
+import my_dqn2
+
 
 def run_experiment(task_size, repeat, env, ppo_, dqn_, ppo_woclst_, dqn_woclst_, ppo_wocloud_, dqn_wocloud_):
     params.min_size = task_size * 8
@@ -244,7 +246,7 @@ if __name__ == '__main__':
     env = environment.Env()
 
     ppo_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)  # continous model (offloading fraction - model1)
-    dqn_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+    dqn_ = my_dqn2.DQN(env, params.action_dim2, params.state_dim2)
 
     ppo = ppo_.load_model(params.ppo_path)
     dqn = dqn_.load_model(params.dqn_path)
@@ -257,7 +259,7 @@ if __name__ == '__main__':
 
     params.cloud = 0
     ppo_wocloud_= my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)  # continous model (offloading fraction - model1)
-    dqn_wocloud_ = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
+    dqn_wocloud_ = my_dqn2.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
 
     ppo_wocloud = ppo_wocloud_.load_model(params.woCloud_ppo_path)
     dqn_wocloud = dqn_wocloud_.load_model(params.woCloud_dqn_path)

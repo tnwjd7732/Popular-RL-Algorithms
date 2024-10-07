@@ -19,6 +19,7 @@ class Env():
         self.numVeh = param.numVeh
         self.wrong_cnt = 0
         self.cloud_selection = 0
+        self.valid_cnt = 1
         self.taskInfo = np.zeros(3)
         self.mobilityInfo = np.zeros(4)
         self.taskEnd = np.zeros(self.numVeh * param.STEP) # 처리 완료까지 남은 시간 기록
@@ -80,13 +81,15 @@ class Env():
 
             param.wrong_cnt.append(self.wrong_cnt)
             param.cloud_cnt.append(self.cloud_selection)
-
+            param.valid_cnt.append(float(self.cloud_selection)/float(self.valid_cnt))
+            print(float(self.cloud_selection)/float(self.valid_cnt))
             #param.wrong_cnt.clear()
             #param.cloud_cnt.clear()
             
 
             self.wrong_cnt = 0
             self.cloud_selection = 0
+            self.valid_cnt = 1
             for i in range(param.numVeh):
                 if params.userplan == 1:  # 크레딧 기반이면 0또는 1로 랜덤하게 설정 (50%)
                     self.plan_info[i] = random.randint(0, 1)
@@ -104,7 +107,7 @@ class Env():
             param.credit_info = self.credit_info
                         
         for i in range(params.numEdge):
-            params.remains_lev[i] = int(params.remains[i]/10)
+            params.remains_lev[i] = int(params.remains[i]/5)
         #print("remains level: ", params.remains_lev)       
 
         ''' 작업 초기화 '''
@@ -138,7 +141,7 @@ class Env():
                 myResource *= 1
             else:
                 myResource = np.array([param.remains[self.nearest]])  
-
+            myResource/=5 #아래에서 평균은 lev으로 구하는데 lev은 위에서 /10한 것
             sum = 0 
 
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
@@ -163,7 +166,7 @@ class Env():
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
             cluster_servers.sort()
             if cloud == 0:
-                cluster_remains_lev = [params.remains_lev[i]*1 for i in cluster_servers]
+                cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
             else:
                 cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
             if cloud == 0:
@@ -219,6 +222,9 @@ class Env():
         return hop
 
     def step(self, action1, action2, stepnum, cloud):
+        if action1 != 1:
+            self.valid_cnt+=1
+
         def calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, hopcount):
             Ttotal = max(Tloc, Toff)
             reward = 0
@@ -312,7 +318,8 @@ class Env():
                 self.alloRes_loc[stepnum] = optimal_resource_loc if Tloc else 0
                 self.alloRes_neighbor[stepnum] = 0
                 param.remains[self.nearest] -= optimal_resource_loc if Tloc else 0
-                self.cloud_selection += 1
+                if action1 != 1:
+                    self.cloud_selection += 1
                 #print(f"offloading: cloud {1 - action1}%)")
             else:
                 if action2 > len(self.cluster):
@@ -439,7 +446,8 @@ class Env():
                 self.alloRes_loc[stepnum] = optimal_resource_loc if Tloc else 0
                 self.alloRes_neighbor[stepnum] = 0
                 param.remains[self.nearest] -= optimal_resource_loc if Tloc else 0
-                self.cloud_selection += 1
+                if action1 != 1:
+                    self.cloud_selection += 1
             else:
                 if action2 > len(self.cluster):
                     action_globid_ver = 0

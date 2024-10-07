@@ -12,13 +12,13 @@ GPU = False
 
 
 '''training parameters'''
-EPS=600
+EPS=700
 STEP = 10
 GAMMA = 0.99
 
 '''numEdge를 바꾸면 lamb, maxEdge를 함께 조정해주어야 함!'''
 numEdge = 36
-numVeh = 200
+numVeh = 300
 lamb = 2 #시스템 내 클러스터 개수 (K-means에서 K와 같은 역할함)
 maxEdge = int(numEdge/lamb)+4 #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
 CHs = []
@@ -97,6 +97,7 @@ radius = 0.5
 wrong_cnt = []
 epsilon_logging = []
 cloud_cnt = []
+valid_cnt = []
 
 '''Resource allocation algorithm params'''
 basic_min = 1.2

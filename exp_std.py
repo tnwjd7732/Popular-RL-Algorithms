@@ -34,7 +34,7 @@ def run_experiment(resource_std, repeat):
     env = environment.Env()
 
     ppo_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)  # continous model (offloading fraction - model1)
-    dqn_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+    dqn_ = my_dqn2.DQN(env, params.action_dim2, params.state_dim2)
 
     ppo = ppo_.load_model(params.ppo_path)
     dqn = dqn_.load_model(params.dqn_path)
@@ -274,7 +274,7 @@ def plot(results, std_range):
     plt.show()
 
 if __name__ == '__main__':
-    std_range = np.arange(0, 20.1, 4)
+    std_range = np.arange(0, 10.1, 2.5)
     repeat = params.repeat
     final_results = {
       'our_succ': [],

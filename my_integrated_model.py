@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import random
 import my_dqn
+import my_dqn2
+
 import math
 import clustering 
 import sys
@@ -23,7 +25,7 @@ env = environment.Env()
 cluster = clustering.Clustering()
 
 ppo = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim) # continous model (offloading fraction - model1)
-dqn = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+dqn = my_dqn2.DQN(env, params.action_dim2, params.state_dim2)
 clst = clustering.Clustering()
 
 
@@ -45,6 +47,7 @@ losses.clear()
 params.wrong_cnt.clear()
 params.epsilon_logging.clear()
 params.cloud_cnt.clear()
+params.valid_cnt.clear()
 
 
 action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -94,6 +97,7 @@ def plot():
 
      # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
     ax7.plot(success_rate)
+    ax7.plot(params.valid_cnt[1:])
     ax7.set_xlabel('Episode', fontsize=font_size)
     ax7.set_ylabel('Success rate', fontsize=font_size)
     ax7.tick_params(axis='both', which='major', labelsize=font_size-5)

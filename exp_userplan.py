@@ -11,6 +11,7 @@ import no_RL_scheme as schemes
 import clustering
 import my_ppo
 import my_dqn
+import my_dqn2
 
 
 clst = clustering.Clustering()
@@ -40,7 +41,7 @@ def run_experiment(numVeh, repeat, credit_based=True, fixed_allocation=None):
 
     env = environment.Env()  # 환경 초기화
     ppo_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)
-    dqn_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+    dqn_ = my_dqn2.DQN(env, params.action_dim2, params.state_dim2)
 
     ppo = ppo_.load_model(params.ppo_path)
     dqn = dqn_.load_model(params.dqn_path)

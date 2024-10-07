@@ -17,6 +17,10 @@ import clustering
 import sys
 
 params.cloud = 0
+params.actorlr *= 3 
+params.criticlr *= 3
+params.dqnlr *= 3
+params.scheduler_gamma = 0.999 # more bigger value to maintain initial learning rate setting
 
 replay_buffer_size = 1e6
 #replay_buffer = my_sac.ReplayBuffer_SAC(replay_buffer_size)
@@ -52,6 +56,7 @@ losses.clear()
 params.wrong_cnt.clear()
 params.epsilon_logging.clear()
 params.cloud_cnt.clear()
+params.valid_cnt.clear()
 
 
 action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -101,6 +106,8 @@ def plot():
 
      # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
     ax7.plot(success_rate)
+    #ax7.plot(params.valid_cnt[1:]) #값의 range가 같아서 여기다 그림
+
     ax7.set_xlabel('Episode', fontsize=font_size)
     ax7.set_ylabel('Success rate', fontsize=font_size)
     ax7.tick_params(axis='both', which='major',labelsize=font_size - 5)

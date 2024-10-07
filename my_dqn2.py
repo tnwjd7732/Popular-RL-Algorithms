@@ -74,10 +74,10 @@ class QNetwork(nn.Module):
         
         # Conv1D for combined remain and hop information
         # in_channels = 2 because we combine remain and hop (2 values per server)
-        self.conv_remain_hop = nn.Conv1d(in_channels=2, out_channels=32, kernel_size=2, stride=2, padding=0)
+        self.conv_remain_hop = nn.Conv1d(in_channels=2, out_channels=64, kernel_size=2, stride=2, padding=0)
 
         # Conv1D for task information (3 task values)
-        self.conv_task = nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=0)
+        self.conv_task = nn.Conv1d(in_channels=1, out_channels=64, kernel_size=3, stride=1, padding=0)
         
         self.flatten = nn.Flatten()
 
@@ -86,8 +86,8 @@ class QNetwork(nn.Module):
         else: 
             conv_output_length = params.maxEdge // 2  # Adjust for stride 2
 
-        flattened_conv_out_size_remain_hop = 32 * conv_output_length
-        flattened_conv_out_size_task = 32  # Conv1D will produce one value because kernel_size=3 with stride=1
+        flattened_conv_out_size_remain_hop = 64 * conv_output_length
+        flattened_conv_out_size_task = 64  # Conv1D will produce one value because kernel_size=3 with stride=1
 
         self.dense_remain_hop = nn.Linear(flattened_conv_out_size_remain_hop, 1)
         self.dense_task = nn.Linear(flattened_conv_out_size_task, 1)
