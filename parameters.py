@@ -8,7 +8,7 @@ Giga = 1000 * Mega
 task = np.zeros(3)
 time_slot = 1
 
-GPU = True
+GPU = False
 
 
 '''training parameters'''
