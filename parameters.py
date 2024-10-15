@@ -12,13 +12,13 @@ GPU = False
 
 
 '''training parameters'''
-EPS=700
+EPS = 1000
 STEP = 10
 GAMMA = 0.99
 
 '''numEdge를 바꾸면 lamb, maxEdge를 함께 조정해주어야 함!'''
 numEdge = 36
-numVeh = 300
+numVeh = 500
 lamb = 2 #시스템 내 클러스터 개수 (K-means에서 K와 같은 역할함)
 maxEdge = int(numEdge/lamb)+4 #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
 CHs = []
@@ -76,7 +76,7 @@ resource_std = 10
 glob = 0
 
 '''task information'''
-min_size = 0.1  * Byte
+min_size = 0.1  * Byte 
 max_size = 3  * Byte
 min_cpu = 0.1 
 max_cpu = 3
@@ -85,7 +85,7 @@ max_time = 2
 unitprice_size = 2 # 차량 지불 함수에서 가중치
 unitprice_cpu = 2 # 차량 지불 함수에서 가중치
 wcomp = 10**26 # 소모 함수에서 가중치
-wtrans = 0.5 # 소모 함수에서 가중치
+wtrans = 0.4 # 소모 함수에서 가중치
 
 grid_size = int(math.sqrt(numEdge))
 edge_pos = np.zeros((numEdge, 2))
@@ -107,7 +107,7 @@ basic_init = (basic_min+basic_max)/2 #now: 1.4
 premium_min = 1.6
 premium_max = 2.0
 premium_init = (premium_max+premium_min)/2 #now: 2
-cloud_trans_price = 2
+cloud_trans_price = 1.5
 '''plot parameters '''
 font_size = 18
 credit_info = np.zeros(numVeh) 
@@ -115,18 +115,19 @@ credit_info = np.zeros(numVeh)
 credit = 0
 #0: our scheme, 1: only cheap one, 2: only expensive one
 
-dqnlr = 1e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 1e-4  # ppo - actor 학습률
-criticlr = 5e-4  # ppo - critic 학습률
+#wocloud 제외하고는 1e-4, or 3e-3처럼 dqn lr을 크게 가져갔었음
+dqnlr = 1e-4  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
+actorlr = 5e-5  # ppo - actor 학습률
+criticlr = 5e-5  # ppo - critic 학습률
 scheduler_step = 1000  # 학습률 스케줄러 단계
 scheduler_gamma = 0.995  # 학습률 스케줄러 감쇠 계수 - 바꾸기 전 0.995
-dqn_batch = 256  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
-ppo_batch = 256  # ppo 배치 크기 before(1004, 512)
+dqn_batch = 1024  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
+ppo_batch = 512  # ppo 배치 크기 before(1004, 512)
 
 
 # The number of total step per one episode is 2000
 
 cloud = 1 #default values
 distribution_mode = 0
-repeat = 2
+repeat = 3
 hop_counts= []

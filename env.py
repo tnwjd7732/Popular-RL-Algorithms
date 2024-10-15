@@ -107,7 +107,7 @@ class Env():
             param.credit_info = self.credit_info
                         
         for i in range(params.numEdge):
-            params.remains_lev[i] = int(params.remains[i]/5)
+            params.remains_lev[i] = int(params.remains[i])/10
         #print("remains level: ", params.remains_lev)       
 
         ''' 작업 초기화 '''
@@ -132,16 +132,16 @@ class Env():
         self.myCH = myClusterId
 
         
-        cloud_resource = [100]
-        cloud_hop = [100]
+        cloud_resource = [10]
+        cloud_hop = [10]
 
         if myClusterId is not None:
             if cloud == 0:
-                myResource = np.array([param.remains[self.nearest]]) #클라우드에서는 리소스 넣을 때 *10
-                myResource *= 1
+                myResource = np.array([param.remains[self.nearest]])/10 #클라우드에서는 리소스 넣을 때 *10
+                #myResource *= 1
             else:
-                myResource = np.array([param.remains[self.nearest]])  
-            myResource/=5 #아래에서 평균은 lev으로 구하는데 lev은 위에서 /10한 것
+                myResource = np.array([param.remains[self.nearest]])/10  
+            #myResource/=1 #아래에서 평균은 lev으로 구하는데 lev은 위에서 /10한 것
             sum = 0 
 
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
@@ -150,8 +150,9 @@ class Env():
             for server in cluster_servers:
                 sum += param.remains_lev[int(server)]
             avgResource = np.array([sum/len(cluster_servers)])
-            if cloud == 0:
-                avgResource *= 1
+            avgResource *= 2
+            #if cloud == 0:
+            #    avgResource *= 1
             taskstate = np.zeros(3)
             taskstate = [self.taskInfo[i] for i in range(3)]
 
@@ -170,9 +171,9 @@ class Env():
             else:
                 cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
             if cloud == 0:
-                cluster_hop_count = [params.hop_count[i] for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+                cluster_hop_count = [params.hop_count[i]/10 for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
             else:
-                cluster_hop_count = [params.hop_count[i] for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+                cluster_hop_count = [params.hop_count[i]/10 for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
     
             cluster_size = len(cluster_servers)
             dummy_size = max(0, params.maxEdge - cluster_size)  # 더미값의 크기 결정
@@ -225,7 +226,7 @@ class Env():
         if action1 != 1:
             self.valid_cnt+=1
 
-        def calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, hopcount):
+        def calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, action2):
             Ttotal = max(Tloc, Toff)
             reward = 0
             r1 = 0
@@ -233,50 +234,59 @@ class Env():
 
             if tasktime < Ttotal:  # 실패
                 reward = 0
-                if params.userplan == 1: #크레딧 기반에서만 바꾸기
+                if params.userplan == 1:  # 크레딧 기반에서만 바꾸기
                     self.credit_info[vehId] = min(self.credit_info[vehId] + 0.1, param.premium_max if self.plan_info[vehId] else param.basic_max)
                 
-                # Determine the cause of failure and assign penalties
+                # 실패 원인에 따른 리워드 분배
                 if Tloc > tasktime and Toff > tasktime:
-                    # Both actions are responsible
-                    r1 = r2 = -3
+                    # 두 모델 모두 잘못된 결정
+                    r1 = r2 = 0
                 elif Tloc > tasktime:
-                    # action1 is responsible
+                    # 모델1이 잘못된 결정 (자원이 없는데도 fraction을 크게 설정한 경우)
                     if math.isinf(Tloc):
-                        r1 = -3 #할 수 없으면서 지가 한다고 fraction 크게 잡은거니까 model1은 확실하게 잘못한 것임
+                        r1 = 0  # 명확한 잘못
                     else:
-                        r1 = min(max(-3, Tloc-tasktime), -1)
-                    r2 = 1
+                        r1 = 0.1  # 일부 책임 인정
+                    r2 = 1  # 모델 2는 책임 없음
                 elif Toff > tasktime:
-                    if param.remains[self.nearest] >= optimal_resource_off+optimal_resource_loc:
-                        r1 = -1.5 #자기가 하면 됐는데도 보낸거니까 잘못한거임
+                    # 모델2가 잘못된 결정 (다른 서버로 보내면 될 것을 잘못된 서버로 선택)
+                    if param.remains[self.nearest] >= optimal_resource_off + optimal_resource_loc:
+                        r1 = 0.1  # 모델1이 잘못한 경우
                     else:
-                        r1 = 1
-                    r2 = -3
-                        
-      
+                        r1 = 1  # 모델1은 제대로 했음
+                    r2 = 0  # 모델2가 잘못
+
                 self.taskEnd[stepnum] = tasktime
+
             else:  # 성공
                 if params.userplan == 1:
                     self.credit_info[vehId] = max(self.credit_info[vehId] - 0.1, param.premium_min if self.plan_info[vehId] else param.basic_min)
+                
                 cost_weight = 1.5 if self.plan_info[vehId] else 1.0
                 profit = taskcpu * param.unitprice_cpu * cost_weight + tasksize * param.unitprice_size * cost_weight
+                
                 energy_coeff = 10 ** -26
                 cost_comp1 = energy_coeff * optimal_resource_loc ** 2 * taskcpu * action1
                 cost_comp2 = energy_coeff * optimal_resource_off ** 2 * taskcpu * (1 - action1)
                 cost_comp = param.wcomp * (cost_comp1 + cost_comp2)
+                
                 cost_trans = param.cloud_trans_price * (1 - action1) * tasksize if action2 == 0 else param.wtrans * (1 - action1) * tasksize * hopcount
                 cost = cost_comp + cost_trans
+                
                 reward = profit - cost[0] + tasktime - Ttotal
-                
-                # Adjust reward based on revenue
-                reward = max(1, reward / 2)  # Scale down the reward to make it manageable
-                r1 = r2 = min(reward, 5)
 
+                # 여유 시간에 따른 추가 보상 부여
+                remaining_time_bonus = max(0, tasktime - Ttotal) * 0.1  # 남은 시간에 비례한 보너스
+                reward += remaining_time_bonus
                 
+                # 보상이 1보다 작지 않도록 조정
+                reward = max(1, min(reward / 5, 2))
+                r1 = r2 = reward
+
                 self.taskEnd[stepnum] = Ttotal
 
             return reward, r1, r2, Ttotal
+
 
         if cloud == 0:
             action2+=1
@@ -300,9 +310,9 @@ class Env():
             self.wrong_cnt += 1
             Tloc = local_amount / optimal_resource_loc if action1 else 0
             if Tloc < tasktime:
-                r1, r2, reward, Ttotal = 2, -5, 0, 0
+                r1, r2, reward, Ttotal = 1, -1, 0, 0
             else:
-                r1, r2, reward, Ttotal = -2, -5, 0, 0
+                r1, r2, reward, Ttotal = 0.1, -1, 0, 0
             self.allo_loc[stepnum] = self.allo_neighbor[stepnum] = -1
             self.alloRes_loc[stepnum] = self.alloRes_neighbor[stepnum] = 0
             self.taskEnd[stepnum] = -1
@@ -361,219 +371,120 @@ class Env():
         #print(param.remains)
         return new_state1, new_state2, reward, r1, r2, False
 
-    def step_single(self, action1, action2, stepnum, cloud):
-
-        def calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, hopcount):
-            Ttotal = max(Tloc, Toff)
-            reward = 0
-            r1 = 0
-            if tasktime < Ttotal:  # 실패
-                if params.userplan == 1:
-                    self.credit_info[vehId] = min(self.credit_info[vehId] + 0.1, param.premium_max if self.plan_info[vehId] else param.basic_max)
-
-                # 실패에 대한 책임을 r1에게 부여
-                if Tloc > tasktime and Toff > tasktime:
-                    # 둘 다 책임이 있을 때
-                    r1 = -4
-                elif Tloc > tasktime:
-                    # action1이 주로 잘못했을 때
-                    if math.isinf(Tloc):
-                        r1 = -3  # 할 수 없으면서 큰 fraction을 선택한 경우
-                    else:
-                        r1 = -3 #min(max(-3, Tloc-tasktime), -1)
-                elif Toff > tasktime:
-                    # action2가 주로 잘못했을 때도 이제 r1에게 부여
-                    if param.remains[self.nearest] >= optimal_resource_off:
-                        r1 = -3  # action1이 자기가 처리할 수 있었는데도 오프로드한 경우
-                    else:
-                        r1 = -3 if tasktime > 1 else -3
-
-                self.taskEnd[stepnum] = tasktime
-            else:  # 성공
-                if params.userplan == 1:
-                    self.credit_info[vehId] = max(self.credit_info[vehId] - 0.1, param.premium_min if self.plan_info[vehId] else param.basic_min)
-                cost_weight = 1.5 if self.plan_info[vehId] else 1.0
-                profit = taskcpu * param.unitprice_cpu * cost_weight + tasksize * param.unitprice_size * cost_weight
-                energy_coeff = 10 ** -26
-                cost_comp1 = energy_coeff * optimal_resource_loc ** 2 * taskcpu * action1
-                cost_comp2 = energy_coeff * optimal_resource_off ** 2 * taskcpu * (1 - action1)
-                cost_comp = param.wcomp * (cost_comp1 + cost_comp2)
-                cost_trans = param.cloud_trans_price if action2 == 0 else param.wtrans * (1 - action1) * tasksize * hopcount
-                cost = cost_comp + cost_trans
-                reward = profit - cost[0] +  tasktime - Ttotal
-
-                # 성공 시 리워드도 r1에 모두 부여
-                reward = max(1, reward / 2)  # 보상 스케일 조정
-                r1 = min(reward, 5)
-
-                self.taskEnd[stepnum] = Ttotal
-
-            return reward, r1, Ttotal
-
-        if cloud == 0:
-            action2 += 1
-
+    def step2(self, action1, action2, stepnum):
         vehId = stepnum % param.numVeh
         current_credit = self.credit_info[vehId]
-        tasksize, taskcpu, tasktime = param.task
 
-        local_amount = taskcpu * action1
-        off_amount = taskcpu * (1 - action1)
-        optimal_resource_loc = local_amount / tasktime if local_amount else 0
-        optimal_resource_off = off_amount / tasktime if off_amount else 0
-
-        optimal_resource_loc = min(param.remains[self.nearest], optimal_resource_loc * current_credit)
-
-        if len(self.cluster) < action2 and action1 != 1:
-            self.wrong_cnt += 1
-            Tloc = local_amount / optimal_resource_loc if action1 else 0
-            if Tloc < tasktime:
-                r1, reward, Ttotal = -5, 0, 0
-            else:
-                r1, reward, Ttotal = -4, 0, 0
-            self.allo_loc[stepnum] = self.allo_neighbor[stepnum] = -1
-            self.alloRes_loc[stepnum] = self.alloRes_neighbor[stepnum] = 0
-            self.taskEnd[stepnum] = -1
-            Tloc, Toff = 0, 0
-        else:
-            if action2 == 0:
-                Ttrans = 0.8
-                Tloc = local_amount / optimal_resource_loc if action1 else 0
-                Toff = Ttrans if action1 != 1 else 0
-                reward, r1, Ttotal = calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, 0)
-                self.allo_loc[stepnum] = self.nearest
-                self.allo_neighbor[stepnum] = -1
-                self.alloRes_loc[stepnum] = optimal_resource_loc if Tloc else 0
-                self.alloRes_neighbor[stepnum] = 0
-                param.remains[self.nearest] -= optimal_resource_loc if Tloc else 0
-                if action1 != 1:
-                    self.cloud_selection += 1
-            else:
-                if action2 > len(self.cluster):
-                    action_globid_ver = 0
-                    optimal_resource_off = 0
-                else:
-                    action_globid_ver = self.cluster[int(action2) - 1]
-                    optimal_resource_off = min(param.remains[action_globid_ver], optimal_resource_off * current_credit)
-
-                hopcount = self.calculate_hopcount(param.edge_pos[self.nearest], param.edge_pos[action_globid_ver])
-                bandwidth = np.random.uniform(0.07, 0.1)
-                Ttrans = (tasksize * (1 - action1)) / (bandwidth * 1000) * hopcount
-                Tcomp = off_amount / optimal_resource_off if action1 != 1 else 0
-                Tloc = local_amount / optimal_resource_loc if action1 else 0
-                Toff = Ttrans + Tcomp
-                reward, r1, Ttotal = calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, hopcount)
-                self.allo_loc[stepnum] = self.nearest
-                self.allo_neighbor[stepnum] = action_globid_ver
-                self.alloRes_loc[stepnum] = optimal_resource_loc
-                self.alloRes_neighbor[stepnum] = optimal_resource_off
-                param.remains[self.nearest] -= optimal_resource_loc
-                param.remains[action_globid_ver] -= optimal_resource_off
-
-        new_state1, new_state2_temp = self.reset(stepnum, cloud)
-        new_state2 = np.concatenate((new_state2_temp, action1))
-
-        # Ensure reward and r1 are floats
-        reward = float(reward)
-        r1 = float(r1)
-        
-        return reward, r1, False
-
-    def step2(self, action1, action2, stepnum): # nearest, greedy 전용 함수 (클러스터 활용 X)
-        vehId = stepnum % param.numVeh
-        current_credit = self.credit_info[vehId]
-       
         tasksize = param.task[0]
         taskcpu = param.task[1]
         tasktime = param.task[2]
 
         local_amount = taskcpu * action1 
-        off_amount = taskcpu * (1-action1)
-        optimal_resource_loc =local_amount/tasktime #state[5] = required CPU cycles, state[6] = time deadline
-        optimal_resource_loc = min(param.remains[self.nearest], optimal_resource_loc*current_credit)
+        off_amount = taskcpu * (1 - action1)
+        optimal_resource_loc = local_amount / tasktime if local_amount else 0
+        optimal_resource_loc = min(param.remains[self.nearest], optimal_resource_loc * current_credit)
         
-        optimal_resource_off = off_amount/tasktime #state[5] = required CPU cycles, state[6] = time deadline
-
-        #print("--> fraction: ", action1, "offloading decision: ", action2)
-        #print("local edge: ", self.nearest,"(resource lev:", param.remains_lev[self.nearest], "-", (action1),"%)")
-
-        optimal_resource_off = min(param.remains[action2], optimal_resource_off*current_credit)
+        optimal_resource_off = off_amount / tasktime if off_amount else 0
+        optimal_resource_off = min(param.remains[action2], optimal_resource_off * current_credit)
 
         if action1 == 0: 
             Tloc = 0
         else:
-            Tloc = local_amount/optimal_resource_loc
+            Tloc = local_amount / optimal_resource_loc
+
         hopcount = self.calculate_hopcount(param.edge_pos[self.nearest], param.edge_pos[action2])
         param.hop_counts.append(hopcount)
         bandwidth = np.random.uniform(0.07, 0.1)
-        Ttrans = (tasksize*(1-action1))/(bandwidth*1000)*hopcount
+        Ttrans = (tasksize * (1 - action1)) / (bandwidth * 1000) * hopcount
+
         if action1 == 1: 
-            Tcomp=0 
+            Tcomp = 0 
         else:
-            Tcomp = off_amount/optimal_resource_off
-        
+            Tcomp = off_amount / optimal_resource_off
+
         Toff = Ttrans + Tcomp
         Ttotal = max(Tloc, Toff)
 
-        if tasktime < Ttotal: #failure
+        def calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, hopcount):
+            Ttotal = max(Tloc, Toff)
             reward = 0
-            if params.userplan == 1:
-                if self.plan_info[vehId] == 0: #basic
-                    self.credit_info[vehId] = min(self.credit_info[vehId]+0.1, param.basic_max)
-                else:
-                    self.credit_info[vehId] = min(self.credit_info[vehId]+0.1, param.premium_max)
-            
-            self.allo_loc[stepnum] = self.nearest       
-            self.allo_neighbor[stepnum] = action2     
-            self.taskEnd[stepnum] = tasktime #실패한 경우 할당받은 자원 사용 시간 = latency 요구사항
-        else: # 성공 -- (이웃 엣지서버 쓴 경우)
-            if params.userplan == 1:
-                if self.plan_info[vehId] == 0: #basic
-                    self.credit_info[vehId] = max(self.credit_info[vehId]-0.1, param.basic_min)
-                else:
-                    self.credit_info[vehId] = max(self.credit_info[vehId]-0.1, param.premium_min)
+            r1 = 0
+            r2 = 0
 
-            plan = self.plan_info[int(vehId)]
-            if plan == 0:
-                cost_weight = 1.0
-            else:
-                cost_weight = 1.5
-            profit = taskcpu*param.unitprice_cpu*cost_weight + tasksize*param.unitprice_size*cost_weight
-        
-            energy_coeff = 10 ** -26 # effective energy coefficient - 관련 연구 논문에서 참고한 값 (후에 레퍼런스 확인하고 더 정확하게 수정할 것)
-            cost_comp1 = energy_coeff * optimal_resource_loc ** 2 * taskcpu*action1 #local에서 연산하려고 사용한 에너지 소모량
-            cost_comp2 = energy_coeff * optimal_resource_off ** 2* taskcpu*(1-action1) #neighbor에서 연산하려고 사용한 에너지 소모량
-            cost_comp = param.wcomp*(cost_comp1+cost_comp2)
-            cost_trans = param.wtrans*(1-action1)*tasksize*hopcount
-            cost = cost_comp + cost_trans
-            
+            if tasktime < Ttotal:  # 실패
+                reward = 0
+                if params.userplan == 1:  # 크레딧 기반에서만 바꾸기
+                    self.credit_info[vehId] = min(self.credit_info[vehId] + 0.1, param.premium_max if self.plan_info[vehId] else param.basic_max)
+                
+                # 실패 원인에 따른 리워드 분배
+                if Tloc > tasktime and Toff > tasktime:
+                    # 두 모델 모두 잘못된 결정
+                    r1 = r2 = 0
+                elif Tloc > tasktime:
+                    # 모델1이 잘못된 결정 (자원이 없는데도 fraction을 크게 설정한 경우)
+                    if math.isinf(Tloc):
+                        r1 = 0  # 명확한 잘못
+                    else:
+                        r1 = 0.1  # 일부 책임 인정
+                    r2 = 1  # 모델 2는 책임 없음
+                elif Toff > tasktime:
+                    # 모델2가 잘못된 결정 (다른 서버로 보내면 될 것을 잘못된 서버로 선택)
+                    if param.remains[self.nearest] >= optimal_resource_off + optimal_resource_loc:
+                        r1 = 0.1  # 모델1이 잘못한 경우
+                    else:
+                        r1 = 1  # 모델1은 제대로 했음
+                    r2 = 0  # 모델2가 잘못
 
-            reward = profit - cost + tasktime - Ttotal#objective function of original problem
-            #reward = max(0.1, reward /5) #old one
+                self.taskEnd[stepnum] = tasktime
 
-            # Adjust reward based on revenue
-            reward = max(1, reward / 2)  # Scale down the reward to make it manageable
-    
-            self.taskEnd[stepnum] = Ttotal
+            else:  # 성공
+                if params.userplan == 1:
+                    self.credit_info[vehId] = max(self.credit_info[vehId] - 0.1, param.premium_min if self.plan_info[vehId] else param.basic_min)
+                
+                cost_weight = 1.5 if self.plan_info[vehId] else 1.0
+                profit = taskcpu * param.unitprice_cpu * cost_weight + tasksize * param.unitprice_size * cost_weight
+                
+                energy_coeff = 10 ** -26
+                cost_comp1 = energy_coeff * optimal_resource_loc ** 2 * taskcpu * action1
+                cost_comp2 = energy_coeff * optimal_resource_off ** 2 * taskcpu * (1 - action1)
+                cost_comp = param.wcomp * (cost_comp1 + cost_comp2)
+                
+                cost_trans = param.cloud_trans_price * (1 - action1) * tasksize if action2 == 0 else param.wtrans * (1 - action1) * tasksize * hopcount
+                cost = cost_comp + cost_trans
+                
+                reward = profit - cost + tasktime - Ttotal
 
-            self.allo_loc[stepnum] = self.nearest
-            self.allo_neighbor[stepnum] = action2
+                # 여유 시간에 따른 추가 보상 부여
+                remaining_time_bonus = max(0, tasktime - Ttotal) * 0.1  # 남은 시간에 비례한 보너스
+                reward += remaining_time_bonus
+                
+                # 보상이 1보다 작지 않도록 조정
+                reward = max(1, min(reward / 5, 2))
+                r1 = r2 = reward
 
-            if Tloc == 0:
-                optimal_resource_loc = 0
-            if Tcomp == 0:
-                optimal_resource_off = 0
+                self.taskEnd[stepnum] = Ttotal
 
-        self.alloRes_loc[stepnum]=optimal_resource_loc
-        self.alloRes_neighbor[stepnum]= optimal_resource_off
-            
+            return reward, r1, r2, Ttotal
+
+
+        if tasktime < Ttotal:  # 실패
+            reward, r1, r2, Ttotal = calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, hopcount)
+        else:  # 성공
+            reward, r1, r2, Ttotal = calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, hopcount)
+
+        self.allo_loc[stepnum] = self.nearest
+        self.allo_neighbor[stepnum] = action2
+
+        if Tloc == 0:
+            optimal_resource_loc = 0
+        if Tcomp == 0:
+            optimal_resource_off = 0
+
+        self.alloRes_loc[stepnum] = optimal_resource_loc
+        self.alloRes_neighbor[stepnum] = optimal_resource_off
+
         param.remains[self.nearest] -= optimal_resource_loc
         param.remains[action2] -= optimal_resource_off
-
-        #print("offloading: ", action2, "(resource lev:", param.remains_lev[action2], "-", 1-action1, "%)")
-
-        #print("req. latency: ", tasktime, "Ttotal: ",Ttotal, "Tloc: ", Tloc, "Toff", Toff, "\n")
-        
 
         done = False
         new_state1, new_state2_temp = self.reset(stepnum, 1)
@@ -581,4 +492,4 @@ class Env():
         action1 = np.array(action1, ndmin=1)
         new_state2 = np.concatenate((new_state2_temp, action1))
         done = False
-        return new_state1, new_state2, reward, 0, 0, done
+        return new_state1, new_state2, reward, r1, r2, done

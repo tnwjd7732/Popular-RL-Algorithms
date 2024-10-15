@@ -64,11 +64,18 @@ def run_experiment_overhead(numVeh, repeat):
         params.hop_counts = []
 
         for step in range(params.STEP * numVeh):
-            action1 = ppo_.choose_action(state1)
-            state2 = np.concatenate((state2_temp, action1))  # 크기 조정
-            params.state2 = state2
-            action2 = dqn_.choose_action(state2, 1)
-            s1_, s2_, _, _, _, hopcount = env.step(action1, action2, step, 1)  # hop count도 반환
+            if params.remains[params.nearest] > params.resource_avg/2:
+                action1, action2 = nearest.choose_action()
+                s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)  # 두개의 action 가지고 step
+            else:
+                action1 = ppo_.choose_action(state1)  # ppo로 offloading fraction 만들기
+                state2 = np.concatenate((state2_temp, action1))
+                params.state2 = state2
+                action2 = dqn_.choose_action(state2, 1)
+                if len(env.cluster) < action2:
+                    action2 = 0
+                s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
+
             state1 = s1_
             state2 = s2_
 
@@ -166,6 +173,7 @@ def run_experiment_overhead(numVeh, repeat):
 
 def plot_overhead(results, veh_range):
     clear_output(True)
+    plt.rcParams['font.family']= 'Times New Roman'
     plt.rcParams.update({'font.size': params.font_size-5})
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))

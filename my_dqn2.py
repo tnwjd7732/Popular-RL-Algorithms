@@ -25,7 +25,7 @@ GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
 EPSILON_START = 1.0
 EPSILON_END = 0.0005
-EPSILON_DECAY = 25000
+EPSILON_DECAY = 50000
 
 device_idx = 0
 if params.GPU:
@@ -70,14 +70,16 @@ class EpsilonScheduler():
 
 class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
+
         super(QNetwork, self).__init__()
         
         # Conv1D for combined remain and hop information
-        # in_channels = 2 because we combine remain and hop (2 values per server)
-        self.conv_remain_hop = nn.Conv1d(in_channels=2, out_channels=64, kernel_size=2, stride=2, padding=0)
+        self.conv_remain_hop = nn.Conv1d(in_channels=2, out_channels=128, kernel_size=2, stride=2, padding=0)
+        self.conv_remain_hop_2 = nn.Conv1d(in_channels=128, out_channels=128, kernel_size=2, stride=1, padding=0)
 
         # Conv1D for task information (3 task values)
-        self.conv_task = nn.Conv1d(in_channels=1, out_channels=64, kernel_size=3, stride=1, padding=0)
+        self.conv_task = nn.Conv1d(in_channels=1, out_channels=128, kernel_size=3, stride=1, padding=0)
+        self.conv_task_2 = nn.Conv1d(in_channels=128, out_channels=128, kernel_size=1, stride=1, padding=0)  # Changed kernel_size to 1
         
         self.flatten = nn.Flatten()
 
@@ -86,59 +88,58 @@ class QNetwork(nn.Module):
         else: 
             conv_output_length = params.maxEdge // 2  # Adjust for stride 2
 
-        flattened_conv_out_size_remain_hop = 64 * conv_output_length
-        flattened_conv_out_size_task = 64  # Conv1D will produce one value because kernel_size=3 with stride=1
+        flattened_conv_out_size_remain_hop = 128 * (conv_output_length - 1)
+        flattened_conv_out_size_task = 128 * (1)  # After second conv layer with kernel_size=1
 
         self.dense_remain_hop = nn.Linear(flattened_conv_out_size_remain_hop, 1)
         self.dense_task = nn.Linear(flattened_conv_out_size_task, 1)
         
-        # Fully connected layers after conv and additional task and fraction information
-        # combined_input_size: dense_remain_hop + dense_task + 1 (fraction)
         combined_input_size = 1 + 1 + 1  # 1 from dense_remain_hop + 1 from dense_task + 1 for fraction
         self.linear1 = nn.Linear(combined_input_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
         self.linear3 = nn.Linear(hidden_size, hidden_size)
+        #self.linear4 = nn.Linear(hidden_size, hidden_size)
+        #self.linear5 = nn.Linear(hidden_size, hidden_size)
 
         self.output = nn.Linear(hidden_size, act_shape)
     
     def forward(self, state):
-        # state is structured as (maxEdge + 1) remains, (maxEdge + 1) hops, 3 task, 1 fraction
         if params.cloud == 1:
             remain = state[:, :params.maxEdge+1].unsqueeze(1)
             hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
-            task = state[:, (params.maxEdge+1)*2:(params.maxEdge+1)*2+3].unsqueeze(1)  # 3 task values
-            fraction = state[:, -1].unsqueeze(1)  # fraction is the last value
+            task = state[:, (params.maxEdge+1)*2:(params.maxEdge+1)*2+3].unsqueeze(1)
+            fraction = state[:, -1].unsqueeze(1)
         else: 
             remain = state[:, :params.maxEdge].unsqueeze(1)
             hop = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
-            task = state[:, (params.maxEdge)*2:(params.maxEdge)*2+3].unsqueeze(1)  # 3 task values
-            fraction = state[:, -1].unsqueeze(1)  # fraction is the last value
+            task = state[:, (params.maxEdge)*2:(params.maxEdge)*2+3].unsqueeze(1)
+            fraction = state[:, -1].unsqueeze(1)
 
-        # Concatenate remain and hop for each server along the channel dimension
-        combined_remain_hop = torch.cat((remain, hop), dim=1)  # Shape: (batch_size, 2, maxEdge or maxEdge+1)
+        combined_remain_hop = torch.cat((remain, hop), dim=1)
 
-        # Apply conv layer on remain and hop
+        # Apply conv layers on remain and hop
         x_remain_hop = F.relu(self.conv_remain_hop(combined_remain_hop))
+        x_remain_hop = F.relu(self.conv_remain_hop_2(x_remain_hop))
         x_remain_hop = self.flatten(x_remain_hop)
         x_remain_hop = F.relu(self.dense_remain_hop(x_remain_hop))
         
-        # Apply conv layer on task information
+        # Apply conv layers on task information
         x_task = F.relu(self.conv_task(task))
+        x_task = F.relu(self.conv_task_2(x_task))  # Using kernel_size=1
         x_task = self.flatten(x_task)
         x_task = F.relu(self.dense_task(x_task))
 
-        # Combine remain-hop, task, and fraction
-        x = torch.cat((x_remain_hop, x_task, fraction), dim=1)  # Combine conv output with task and fraction data
+        x = torch.cat((x_remain_hop, x_task, fraction), dim=1)
 
-        # Pass through fully connected layers
         x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
         x = F.relu(self.linear3(x))
+        #x = F.relu(self.linear4(x))
+        #x = F.relu(self.linear5(x))
 
         q_values = self.output(x)
         
         return q_values
-
 
 
 transition = namedtuple('transition', 'state, next_state, action, reward, is_terminal')

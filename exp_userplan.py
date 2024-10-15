@@ -153,6 +153,7 @@ def run_experiment(numVeh, repeat, credit_based=True, fixed_allocation=None):
 
 def plot_comparison(results, veh_range):
     clear_output(True)
+    plt.rcParams['font.family']= 'Times New Roman'
     plt.rcParams.update({'font.size': params.font_size-5})
 
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(29, 8))  # 크레딧 정보 그래프 추가를 위해 3개의 subplot
@@ -165,9 +166,9 @@ def plot_comparison(results, veh_range):
     ax1.plot(veh_range, results['nocredit_succ_1.22'], label="No-Credit Scheme Success (1.22x)", linewidth=2)
     ax1.plot(veh_range, results['nocredit_succ_1.62'], label="No-Credit Scheme Success (1.62x)", linewidth=2)
 
-    ax1.set_xlabel('Number of Vehicles', fontsize=font_size)
+    ax1.set_xlabel('Number of Vehicles', fontsize=font_size+10)
     ax1.legend()
-    ax1.set_ylabel('Success rate', fontsize=font_size)
+    ax1.set_ylabel('Success rate', fontsize=font_size+10)
     ax1.tick_params(axis='both', which='major', labelsize=font_size)
     #ax1.set_ylim(0.7, 0.9)  # y축 범위를 0.7에서 0.9로
 
@@ -187,9 +188,9 @@ def plot_comparison(results, veh_range):
     ax2.plot(veh_range, nocredit_reward_1_22, label="No-Credit Scheme Reward (1.22x)", color="green", linewidth=2)
     ax2.plot(veh_range, nocredit_reward_1_62, label="No-Credit Scheme Reward (1.62x)", color="red", linewidth=2)
 
-    ax2.set_xlabel('Number of Vehicles', fontsize=font_size)
+    ax2.set_xlabel('Number of Vehicles', fontsize=font_size+10)
     ax2.legend()
-    ax2.set_ylabel('Total Reward', fontsize=font_size)
+    ax2.set_ylabel('Total Reward', fontsize=font_size+10)
     ax2.tick_params(axis='both', which='major', labelsize=font_size)
 
     # 크레딧 정보 비교: 평균, 최소값, 최대값 포함
@@ -209,9 +210,9 @@ def plot_comparison(results, veh_range):
     ax3.errorbar(veh_range, basic_credit_avg, yerr=[basic_credit_avg - basic_credit_min, basic_credit_max - basic_credit_avg],
                  label="Basic User Avg. Credit", fmt='-o', color="orange", capsize=5, linewidth=2)
 
-    ax3.set_xlabel('Number of Vehicles', fontsize=font_size)
+    ax3.set_xlabel('Number of Vehicles', fontsize=font_size+10)
     ax3.legend()
-    ax3.set_ylabel('Avg. Credit', fontsize=font_size)
+    ax3.set_ylabel('Avg. Credit', fontsize=font_size+10)
     ax3.tick_params(axis='both', which='major', labelsize=font_size)
 
     plt.show()

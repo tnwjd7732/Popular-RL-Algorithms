@@ -15,12 +15,13 @@ import my_dqn2
 import math
 import clustering 
 import sys
+import no_RL_scheme as schemes
 
 params.cloud = 0
-params.actorlr *= 3 
-params.criticlr *= 3
-params.dqnlr *= 3
-params.scheduler_gamma = 0.999 # more bigger value to maintain initial learning rate setting
+params.actorlr *= 1
+params.criticlr *= 1
+params.dqnlr *= 1
+params.scheduler_gamma = 0.995 # more bigger value to maintain initial learning rate setting
 
 replay_buffer_size = 1e6
 #replay_buffer = my_sac.ReplayBuffer_SAC(replay_buffer_size)
@@ -35,6 +36,7 @@ dqn = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
 dqn2 = my_dqn2.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
 
 clst = clustering.Clustering()
+nearest = schemes.Nearest()
 
 #print(params.cloud)
 
@@ -144,8 +146,15 @@ if __name__ == '__main__':
         total_step = 0
         for eps in range(params.EPS):
             fail = 0
+            '''
+            randomdist = random.randint(0, 10)
+            if randomdist < 1:
+                params.distribution_mode = 0
+            else:
+                params.distribution_mode = 1
+                '''
             clst.form_cluster()
-            #clst.visualize_clusters()
+            clst.visualize_clusters()
             state1, state2_temp = env.reset(-1, 0)
             episode_reward = 0
             eps_r1 = 0
@@ -157,14 +166,11 @@ if __name__ == '__main__':
             for step in range(params.STEP * params.numVeh):
                 total_step += 1
                 #print("state1:", state1)
+            
                 action1 = ppo.choose_action(state1)  # ppo로 offloading fraction 만들기     
-
                 action1_distribution[min(int(action1 * 10), 9)] += 1
-
                 state2 = np.concatenate((state2_temp, action1))
                 params.state2 = state2
-
-                random_number = random.uniform(0, 1)
                 action2 = dqn2.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 0)  # 두개의 action 가지고 step
 
@@ -233,7 +239,7 @@ if __name__ == '__main__':
 
             success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
             success_rate.append(success_ratio)
-            if total_step > my_dqn.REPLAY_START_SIZE and len(replay_buffer.buffer) >= params.dqn_batch:
+            if total_step > my_dqn2.REPLAY_START_SIZE and len(replay_buffer2.buffer) >= params.dqn_batch:
                 losses.append(loss)
                 #print(loss, type(loss))
 

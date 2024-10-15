@@ -4,7 +4,9 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import sys
+import random
 class Clustering():
+
     def __init__(self):
         self.glob_avg = 0
         self.CH = []
@@ -292,8 +294,9 @@ class Clustering():
     def random_list(self, size, target_mean, target_std):
         if params.distribution_mode == 0:
             random_values = []
+            target_this_turn = random.randint(0, target_std) # 0~target_std 중 매번 새ㅗㄹㅂ게 선택
             while len(random_values) < size:
-                value = np.random.normal(loc=target_mean, scale=target_std)
+                value = np.random.normal(loc=target_mean, scale=target_this_turn)
                 if value >= 0:
                     random_values.append(value)
             return np.array(random_values)
@@ -305,7 +308,7 @@ class Clustering():
                 if value >= 0:
                     random_values.append(value)
             while len(random_values) < size:
-                value = np.random.normal(loc=target_mean*0.1, scale=target_std/5)
+                value = np.random.normal(loc=target_mean*0.1, scale=1)
                 if value >= 0:
                     random_values.append(value)
             return np.array(random_values)
