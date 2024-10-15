@@ -294,7 +294,7 @@ class Clustering():
     def random_list(self, size, target_mean, target_std):
         if params.distribution_mode == 0:
             random_values = []
-            target_this_turn = random.randint(0, target_std) # 0~target_std 중 매번 새ㅗㄹㅂ게 선택
+            target_this_turn = random.randint(0, target_std) # 0~target_std 중 매번 새롭게 선택 
             while len(random_values) < size:
                 value = np.random.normal(loc=target_mean, scale=target_this_turn)
                 if value >= 0:

@@ -29,8 +29,8 @@ EPSILON_DECAY = 25000
 
 device_idx = 0
 if params.GPU:
-    device = torch.device("mps")
-    #device = torch.device("cuda:" + str(device_idx) if torch.cuda.is_available() else "cpu")
+    #device = torch.device("mps")
+    device = torch.device("cuda:" + str(device_idx) if torch.cuda.is_available() else "cpu")
 else:
     device = torch.device("cpu")
 print("DQN Device: ", device)
