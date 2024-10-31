@@ -25,7 +25,7 @@ env = environment.Env()
 cluster = clustering.Clustering()
 
 ppo = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim) # continous model (offloading fraction - model1)
-dqn = my_dqn2.DQN(env, params.action_dim2, params.state_dim2)
+dqn = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
 clst = clustering.Clustering()
 
 
@@ -90,14 +90,13 @@ def plot():
     ax5.tick_params(axis='both', which='major', labelsize=font_size-5)
 
      # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
-    ax6.plot(params.epsilon_logging)
+    ax6.plot(params.valid_cnt[1:])
     ax6.set_xlabel('Episode', fontsize=font_size)
-    ax6.set_ylabel('Epsilon (DDQN)', fontsize=font_size)
+    ax6.set_ylabel('Cloud selection (percentage)', fontsize=font_size)
     ax6.tick_params(axis='both', which='major', labelsize=font_size-5)
 
      # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
     ax7.plot(success_rate)
-    ax7.plot(params.valid_cnt[1:])
     ax7.set_xlabel('Episode', fontsize=font_size)
     ax7.set_ylabel('Success rate', fontsize=font_size)
     ax7.tick_params(axis='both', which='major', labelsize=font_size-5)
@@ -114,6 +113,8 @@ if __name__ == '__main__':
     x = -1
     y = 0
     fail = 0
+    avg = sum = 0
+    loss = 1 # only plot
     for i in range(params.numEdge):
         if (i % params.grid_size == 0):
             x += 1
@@ -122,6 +123,7 @@ if __name__ == '__main__':
         y += 1
 
     if args.train:
+        
         all_ep_r = []
         buffer = {
             'state': [],
@@ -129,12 +131,19 @@ if __name__ == '__main__':
             'reward': [],
             'done': []
         }
+        if params.pre_trained:
+            print("Loading pretrained models...")
+            dqn_ = dqn.load_model(params.dqn_path)
+            ppo_ = ppo.load_model(params.ppo_path)
+        
+
+
         # training loop
         total_step = 0
         for eps in range(params.EPS):
             fail = 0
             clst.form_cluster()
-            clst.visualize_clusters()
+            #clst.visualize_clusters()
             state1, state2_temp = env.reset(-1, 1)
             episode_reward = 0
             eps_r1 = 0
@@ -154,7 +163,12 @@ if __name__ == '__main__':
                 action2 = dqn.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
                     
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
-
+                
+                sum += r
+                if step % 10 ==0 and step != 0:
+                    avg = sum/10
+                    #print("average of previous 5 eps rewards: ", avg)
+                    sum = 0
                 # Check for NaN values in r, r1, or r2
                 if any([np.isnan(val) for val in [r, r1, r2]]):
                     r1 = 0
@@ -162,13 +176,18 @@ if __name__ == '__main__':
                     r = 0
                     #print("nan value - did not store in buffer...")
                 else:
-                    buffer['state'].append(state1)
-                    buffer['action'].append(action1)
-                    buffer['reward'].append(r1)
-                    buffer['done'].append(done)
-                    if action1 != 0: # if action1 (offloading fraction) is zero, the offloading decision is not meaningful...
-                        replay_buffer.add([state2, s2_, [action2], [r2], [done]])
-                    dqn.epsilon_scheduler.step(total_step)
+                    if avg < r:
+                        repeat = 2
+                    else:
+                        repeat = 1
+                    for twice in range(repeat):
+                        buffer['state'].append(state1)
+                        buffer['action'].append(action1)
+                        buffer['reward'].append(r1)
+                        buffer['done'].append(done)
+                        if action1 != 1:
+                            replay_buffer.add([state2, s2_, [action2], [r2], [done]])
+                            dqn.epsilon_scheduler.step(total_step)
 
                 state1 = s1_
                 state2 = s2_
@@ -210,7 +229,7 @@ if __name__ == '__main__':
                     sample = replay_buffer.sample(params.dqn_batch)
                     loss = dqn.learn(sample)
 
-            if eps % 5 == 0 and eps > 0:  # plot and model saving interval
+            if eps % 10 == 0 and eps > 0:  # plot and model saving interval
                 plot()
                 dqn.save_model(params.dqn_path)
                 ppo.save_model(params.ppo_path)
@@ -221,6 +240,7 @@ if __name__ == '__main__':
 
             success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
             success_rate.append(success_ratio)
+            print(eps," - ", round(success_ratio,2)*100, "%")
             if total_step > my_dqn.REPLAY_START_SIZE and len(replay_buffer.buffer) >= params.dqn_batch:
                 losses.append(loss)
                 #print(loss, type(loss))

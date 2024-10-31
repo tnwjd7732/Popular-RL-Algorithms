@@ -10,6 +10,8 @@ import numpy as np
 import datetime, math
 import gym
 import parameters as params
+import no_RL_scheme as schemes
+from torch.nn import MultiheadAttention
 
 # Hyper Parameters
 MAX_EPI=10000
@@ -19,14 +21,18 @@ TARGET_UPDATE_INTERVAL = 20
 
 BATCH_SIZE = 128
 REPLAY_BUFFER_SIZE = 100000
-REPLAY_START_SIZE = 2000
+REPLAY_START_SIZE = 5000
 
 GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
-EPSILON_START = 1.0
+EPSILON_START = 0.5
 EPSILON_END = 0.0005
-EPSILON_DECAY = 25000
+if params.cloud == 1:
+    EPSILON_DECAY = 25000
+else:
+    EPSILON_DECAY = 50000
 
+greedy = schemes.Greedy()
 device_idx = 0
 if params.GPU:
     #device = torch.device("mps")
@@ -67,59 +73,64 @@ class EpsilonScheduler():
     def get_epsilon(self):
         #print("epsilon:", self.epsilon)
         return self.epsilon
+
 class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
         super(QNetwork, self).__init__()
         
-        # Conv1D for combined remain and hop information
-        # in_channels = 2 because we combine remain and hop
-        self.conv = nn.Conv1d(in_channels=2, out_channels=16, kernel_size=4, stride=1, padding=0)
+        # Conv1D layer with kernel_size=1 for independent server information
+        self.conv = nn.Conv1d(in_channels=2, out_channels=16, kernel_size=1, stride=1, padding=0)
         
-        self.flatten = nn.Flatten()
-
+        # Attention mechanism
         if params.cloud == 1:
-            flattened_conv_out_size = 16 * (params.maxEdge + 1 - 3)
-        else: 
-            flattened_conv_out_size = 16 * (params.maxEdge - 3)
+            head = 4
+        else:
+            head = 4
+        self.attention = MultiheadAttention(embed_dim=16, num_heads=head)
+        self.flatten = nn.Flatten()
         
+        # Calculate conv_output_size based on Conv1D layer's parameters
+        conv_output_size = params.maxEdge + 1 if params.cloud == 1 else params.maxEdge
+        flattened_conv_out_size = 16 * conv_output_size  # Adjusted for the conv layer's output size
+        
+        # Dense layer
         self.dense = nn.Linear(flattened_conv_out_size, 1)
         
-        # Fully connected layers after conv and additional task information
-        combined_input_size = 1 + 3  # 1 for fraction, 3 for task information
-        combined_input_size += 1  # Adding output size of the dense layer
-        self.linear1 = nn.Linear(combined_input_size, hidden_size)
+        # Fully Connected Layers
+        self.linear1 = nn.Linear(1 + 3 + 1, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
-        self.linear3 = nn.Linear(hidden_size, hidden_size)
-
         self.output = nn.Linear(hidden_size, act_shape)
     
     def forward(self, state):
-        # state is structured as (maxEdge + 1) remains, (maxEdge + 1) hops, 3 task, 1 fraction
         if params.cloud == 1:
             remain = state[:, :params.maxEdge+1].unsqueeze(1)
             hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
-            taskandfrac = state[:, (params.maxEdge+1)*2:]  # Last 4 values (3 task + 1 fraction)
-        else: 
+            taskandfrac = state[:, (params.maxEdge+1)*2:]
+        else:
             remain = state[:, :params.maxEdge].unsqueeze(1)
             hop = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
-            taskandfrac = state[:, (params.maxEdge)*2:]  # Last 4 values (3 task + 1 fraction)
-
-        # Concatenate remain and hop for each server along the channel dimension
-        combined_remain_hop = torch.cat((remain, hop), dim=1)  # Shape: (batch_size, 2, maxEdge or maxEdge+1)
-
-        # Apply conv layer on the combined remain and hop information
-        x = F.relu(self.conv(combined_remain_hop))
-        x = self.flatten(x)
+            taskandfrac = state[:, (params.maxEdge)*2:]
         
-        # Pass through dense layer
+        # Concatenate remain and hop for each server along the channel dimension
+        combined_remain_hop = torch.cat((remain, hop), dim=1)
+        
+        # Conv layer with kernel_size=1
+        x = F.relu(self.conv(combined_remain_hop))
+        
+        # Flatten output for Attention
+        x = x.permute(2, 0, 1)
+        
+        # Apply Attention
+        x, _ = self.attention(x, x, x)
+        x = x.permute(1, 2, 0).contiguous()
+
+        x = self.flatten(x)
         x = F.relu(self.dense(x))
         
-        # Combine with taskandfrac and pass through fully connected layers
-        x = torch.cat((x, taskandfrac), dim=1)  # Combine conv output with task and fraction data
+        # Combine with task and fraction information
+        x = torch.cat((x, taskandfrac), dim=1)
         x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
-        x = F.relu(self.linear3(x))
-
         q_values = self.output(x)
         
         return q_values
@@ -171,12 +182,18 @@ class DQN(object):
         else: #training phase
             epsilon = self.epsilon_scheduler.get_epsilon()
             #print("epsilon: ", epsilon)
-            if np.random.uniform() > epsilon:   # greedy
+            if np.random.uniform() > epsilon: 
                 actions_value = self.eval_net.forward(x)
                 action = torch.max(actions_value, 1)[1].data.cpu().numpy()[0]     # return the argmax
                 # print(action)
             else:   # random
-                action = np.random.randint(0, self.action_shape)
+                if params.cloud == 1:
+                    action = np.random.randint(0, params.action_dim2)
+                else:
+                    action = np.random.randint(0, params.wocloud_action_dim2)
+                    #action = params.CH_glob_ID
+                    #print(action)
+                
         return action
 
     def learn(self, sample,):
@@ -209,8 +226,15 @@ class DQN(object):
 
         Q_s_prime_a_prime = torch.zeros(len(sample), 1, device=device)
         if len(none_terminal_next_states) != 0:
+            # below is the original code, but I modify this DQN code to DDQN (Double DQN)
             Q_s_prime_a_prime[none_terminal_next_state_index] = self.target_net(none_terminal_next_states).detach().max(1)[0].unsqueeze(1)
+            # Choose action using eval_net (Double DQN)
+            # Modify from here to...
+            #next_action = self.eval_net(none_terminal_next_states).detach().max(1)[1].unsqueeze(1)
 
+            # Use target_net to calculate Q value for the chosen action
+            #Q_s_prime_a_prime[none_terminal_next_state_index] = self.target_net(none_terminal_next_states).gather(1, next_action)
+            # ... here (End of modification)
         # Q_s_prime_a_prime = self.target_net(next_states).detach().max(1, keepdim=True)[0]  # this one is simpler regardless of terminal state
         Q_s_prime_a_prime = (Q_s_prime_a_prime-Q_s_prime_a_prime.mean())/ (Q_s_prime_a_prime.std() + 1e-5)  # normalization
         

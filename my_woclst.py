@@ -118,6 +118,13 @@ if __name__ == '__main__':
         y += 1
 
     if args.train:
+
+        if params.pre_trained:
+            print("Loading pretrained models...")
+            dqn_ = dqn.load_model(params.woClst_dqn_path)
+            ppo_ = ppo.load_model(params.woClst_ppo_path)
+            
+
         all_ep_r = []
         buffer = {
             'state': [],
@@ -127,6 +134,7 @@ if __name__ == '__main__':
         }
         # training loop
         total_step = 0
+        avg = sum =0
         for eps in range(params.EPS):
             fail = 0
             clst.form_cluster_woclst()
@@ -149,10 +157,14 @@ if __name__ == '__main__':
                 state2 = np.concatenate((state2_temp, action1))
                 params.state2 = state2
 
-                random_number = random.uniform(0, 1)
                 action2 = dqn.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
 
+                sum += r
+                if step % 10 ==0 and step != 0:
+                    avg = sum/10
+                    #print("average of previous 5 eps rewards: ", avg)
+                    sum = 0
                 # Check for NaN values in r, r1, or r2
                 if any([np.isnan(val) for val in [r, r1, r2]]):
                     r1 = 0
@@ -160,12 +172,18 @@ if __name__ == '__main__':
                     r = 0
                     #print("nan value - did not store in buffer...")
                 else:
-                    buffer['state'].append(state1)
-                    buffer['action'].append(action1)
-                    buffer['reward'].append(r1)
-                    buffer['done'].append(done)
-                    replay_buffer.add([state2, s2_, [action2], [r2], [done]])
-                    dqn.epsilon_scheduler.step(total_step)
+                    if avg < r:
+                        repeat = 2
+                    else:
+                        repeat = 1
+                    for twice in range(repeat):
+                        buffer['state'].append(state1)
+                        buffer['action'].append(action1)
+                        buffer['reward'].append(r1)
+                        buffer['done'].append(done)
+                        if action1 != 1:
+                            replay_buffer.add([state2, s2_, [action2], [r2], [done]])
+                            dqn.epsilon_scheduler.step(total_step)
 
                 state1 = s1_
                 state2 = s2_
@@ -207,7 +225,7 @@ if __name__ == '__main__':
                     sample = replay_buffer.sample(params.dqn_batch)
                     loss = dqn.learn(sample)
 
-            if eps % 5 == 0 and eps > 0:  # plot and model saving interval
+            if eps % 10 == 0 and eps > 0:  # plot and model saving interval
                 plot()
                 dqn.save_model(params.woClst_dqn_path)
                 ppo.save_model(params.woClst_ppo_path)
@@ -218,6 +236,7 @@ if __name__ == '__main__':
 
             success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
             success_rate.append(success_ratio)
+            print(eps," - ", round(success_ratio,2)*100, "%")
             if total_step > my_dqn.REPLAY_START_SIZE and len(replay_buffer.buffer) >= params.dqn_batch:
                 losses.append(loss)
                 #print(loss, type(loss))

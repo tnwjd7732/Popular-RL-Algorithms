@@ -121,78 +121,113 @@ class Clustering():
         # 각각의 리스트를 오름차순으로 정렬
         params.CHs = sorted(self.CH)
         params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
-
     def form_cluster(self):
-        # 초기화
-        self.CH = []
-        self.cluster_members = {ch_id: [] for ch_id in range(params.numEdge)}
-        params.remains = self.random_list(params.numEdge, params.resource_avg, params.resource_std)
-        self.glob_avg = self.calc_globavg()
-        self.local_remains = np.copy(params.remains)
+        while True:  # 멤버 수가 조건을 만족하지 않을 경우 반복
+            # 초기화
+            self.CH = []
+            self.cluster_members = {ch_id: [] for ch_id in range(params.numEdge)}
+            params.remains = self.random_list(params.numEdge, params.resource_avg, params.resource_std)
+            self.glob_avg = self.calc_globavg()
+            self.local_remains = np.copy(params.remains)
 
-        CH_resources, CH_ids = self.top_k_elements(params.lamb)
-        self.CH = CH_ids.tolist()
+            CH_resources, CH_ids = self.top_k_elements(params.lamb)
+            self.CH = CH_ids.tolist()
 
-        unassigned_servers = set(range(params.numEdge)) - set(self.CH)
-        loop_count = 0  # 무한 루프 방지를 위한 카운터
+            unassigned_servers = set(range(params.numEdge)) - set(self.CH)
+            loop_count = 0  # 무한 루프 방지를 위한 카운터
 
-        while unassigned_servers:
-            loop_count += 1
-            for ch_id in self.CH:
-                if not unassigned_servers:
-                    break
-                if len(self.cluster_members[ch_id]) >= (params.maxEdge - 1):
-                    continue  # 이미 maxEdge에 도달한 경우 건너뜀
+            # 1. 자원이 많은 순으로 노드를 정렬
+            sorted_remains_indices = np.argsort(self.local_remains)[::-1]  # 자원이 많은 순으로 정렬
+            remaining_nodes = sorted_remains_indices.tolist()
 
+            # 2. 라운드 로빈 방식으로 각 클러스터 헤드에 1-hop 연결이 가능한 노드를 할당하는 방식
+            current_head_index = 0  # 라운드 로빈 방식으로 클러스터 헤드를 순환
+            while unassigned_servers and remaining_nodes:
+                # 현재 순환할 클러스터 헤드 선택
+                ch_id = self.CH[current_head_index]
+
+                # 클러스터 헤드에 할당된 노드와 연결된 1-hop 노드를 찾음
                 all_members = [ch_id] + self.cluster_members[ch_id]
                 neighbors = set()
                 for member in all_members:
                     neighbors.update(self.get_neighbors(member))
 
-                eligible_neighbors = [n for n in neighbors if n in unassigned_servers]
+                # 1-hop 연결이 가능한 자원이 많은 노드 중에서 선택
+                eligible_neighbors = [n for n in remaining_nodes if n in unassigned_servers and n in neighbors]
 
                 if eligible_neighbors:
-                    selected_neighbor = self.select_best_neighbor(all_members, eligible_neighbors)
+                    # 자원이 많은 노드 우선 선택
+                    selected_neighbor = eligible_neighbors[0]  # 자원이 많은 노드 선택
                     self.cluster_members[ch_id].append(selected_neighbor)
                     unassigned_servers.remove(selected_neighbor)
+                    remaining_nodes.remove(selected_neighbor)
 
-            self.update_cluster_averages()
-            self.CH.sort(key=lambda ch_id: self.calc_cluster_avg(ch_id), reverse=True)  # 클러스터 내 평균 자원이 많은 순서대로 정렬
-            if loop_count > 1000:  # 무한 루프 방지를 위한 임의의 큰 숫자
-                break
+                # 클러스터 헤드를 순환 (라운드 로빈 방식)
+                current_head_index = (current_head_index + 1) % len(self.CH)
 
-        # 1-hop 연결을 유지하며 미배정 서버 처리
-        if unassigned_servers:
-            for server in list(unassigned_servers):
-                # 1-hop 이내에 있는 클러스터 헤드 찾기
-                neighbor_chs = [ch_id for ch_id in self.CH if server in self.get_neighbors(ch_id)]
-                if neighbor_chs:
-                    best_ch_id = None
-                    best_diff = float('inf')
-                    for ch_id in neighbor_chs:
-                        if len(self.cluster_members[ch_id]) < (params.maxEdge - 1):
-                            diff = abs(self.calc_cluster_avg(ch_id) - params.remains[server])
-                            if diff < best_diff:
-                                best_diff = diff
-                                best_ch_id = ch_id
+                self.update_cluster_averages()
 
-                    if best_ch_id is not None:
-                        self.cluster_members[best_ch_id].append(server)
-                        unassigned_servers.remove(server)
+                # 클러스터 헤드 정렬
+                self.CH.sort(key=lambda ch_id: self.calc_cluster_avg(ch_id), reverse=True)  # 클러스터 내 평균 자원이 많은 순서대로 정렬
+
+                if loop_count > 1000:  # 무한 루프 방지를 위한 임의의 큰 숫자
+                    break
+
+            # 1-hop 연결을 유지하며 미배정 서버 처리
+            if unassigned_servers:
+                for server in list(unassigned_servers):
+                    neighbor_chs = [ch_id for ch_id in self.CH if server in self.get_neighbors(ch_id)]
+                    if neighbor_chs:
+                        best_ch_id = None
+                        best_diff = float('inf')
+                        for ch_id in neighbor_chs:
+                            if len(self.cluster_members[ch_id]) < (params.maxEdge - 1):
+                                diff = abs(self.calc_cluster_avg(ch_id) - params.remains[server])
+                                if diff < best_diff:
+                                    best_diff = diff
+                                    best_ch_id = ch_id
+
+                        if best_ch_id is not None:
+                            self.cluster_members[best_ch_id].append(server)
+                            unassigned_servers.remove(server)
+                        else:
+                            new_ch_id = server
+                            self.CH.append(new_ch_id)
+                            self.cluster_members[new_ch_id] = []
                     else:
-                        # 적절한 클러스터를 찾지 못한 경우 새로운 클러스터 헤드를 생성
                         new_ch_id = server
                         self.CH.append(new_ch_id)
                         self.cluster_members[new_ch_id] = []
-                else:
-                    # 1-hop 이내에 클러스터 헤드가 없는 경우 새로운 클러스터 헤드를 생성
-                    new_ch_id = server
-                    self.CH.append(new_ch_id)
-                    self.cluster_members[new_ch_id] = []
+
+            # lamb개의 클러스터로 줄이기
+            while len(self.CH) > params.lamb:
+                smallest_clusters = sorted(self.CH, key=lambda ch_id: len(self.cluster_members[ch_id]))
+                for i in range(len(smallest_clusters)):
+                    for j in range(i + 1, len(smallest_clusters)):
+                        ch_id1, ch_id2 = smallest_clusters[i], smallest_clusters[j]
+                        if ch_id1 not in self.cluster_members or ch_id2 not in self.cluster_members:
+                            continue
+
+                        if any(self.is_adjacent(member1, member2) for member1 in [ch_id1] + self.cluster_members[ch_id1]
+                            for member2 in [ch_id2] + self.cluster_members[ch_id2]):
+                            if len(self.cluster_members[ch_id1]) + len(self.cluster_members[ch_id2]) + 1 > params.maxEdge:
+                                continue
+                            self.cluster_members[ch_id1].extend(self.cluster_members[ch_id2])
+                            self.cluster_members[ch_id1].append(ch_id2)
+                            self.cluster_members.pop(ch_id2)
+                            self.CH.remove(ch_id2)
+                            break
+                    if len(self.CH) <= params.lamb:
+                        break
+
+            # 클러스터 멤버 수가 조건을 만족하는지 확인
+            over_capacity = any(len(members) >= params.maxEdge for members in self.cluster_members.values())
+
+            if not over_capacity:
+                break  # 모든 클러스터가 maxEdge 제한을 만족하면 반복 종료
 
         params.CHs = sorted(self.CH)
         params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
-
 
     def get_neighbors(self, nodeId):
             """ Get n-hop neighbors of the given nodeId """
@@ -232,10 +267,10 @@ class Clustering():
         total_resources = self.local_remains[ch_id] + sum(self.local_remains[member] for member in self.cluster_members[ch_id])
         return total_resources / (len(self.cluster_members[ch_id]) + 1)
 
-    def is_adjacent(self, index1, index2):
+    def is_adjacent(self, index1, index2, dist):
         row1, col1 = divmod(index1, self.grid_size)
         row2, col2 = divmod(index2, self.grid_size)
-        return abs(row1 - row2) + abs(col1 - col2) <= 1
+        return abs(row1 - row2) + abs(col1 - col2) <= dist
 
     def top_k_elements(self, k):
         sorted_indices = np.argsort(self.local_remains)
@@ -248,7 +283,7 @@ class Clustering():
         i = 0
         while len(selected_indices) < k and i < len(sorted_indices):
             index = sorted_indices[i]
-            if not any(self.is_adjacent(index, selected_index) for selected_index in selected_indices):
+            if not any(self.is_adjacent(index, selected_index,3) for selected_index in selected_indices):
                 selected_indices.append(index)
                 selected_values.append(self.local_remains[index])
             i += 1
@@ -294,7 +329,10 @@ class Clustering():
     def random_list(self, size, target_mean, target_std):
         if params.distribution_mode == 0:
             random_values = []
-            target_this_turn = random.randint(0, target_std) # 0~target_std 중 매번 새롭게 선택 
+            if params.std_exp == 0:
+                target_this_turn = random.randint(0, target_std) # 0~target_std 중 매번 새롭게 선택 
+            else:
+                target_this_turn = target_std
             while len(random_values) < size:
                 value = np.random.normal(loc=target_mean, scale=target_this_turn)
                 if value >= 0:

@@ -3,6 +3,8 @@ import my_sac
 import env as environment
 import torch
 import parameters as params
+params.cloud = 0 
+
 import argparse
 import time
 import numpy as np
@@ -17,23 +19,23 @@ import clustering
 import sys
 import no_RL_scheme as schemes
 
-params.cloud = 0
+
 params.actorlr *= 1
 params.criticlr *= 1
 params.dqnlr *= 1
-params.scheduler_gamma = 0.995 # more bigger value to maintain initial learning rate setting
+params.scheduler_gamma = 0.999 # more bigger value to maintain initial learning rate setting
 
 replay_buffer_size = 1e6
 #replay_buffer = my_sac.ReplayBuffer_SAC(replay_buffer_size)
 replay_buffer = my_dqn.replay_buffer(replay_buffer_size)
-replay_buffer2 = my_dqn2.replay_buffer(replay_buffer_size)
+replay_buffer2 = my_dqn.replay_buffer(replay_buffer_size)
 
 env = environment.Env()
 cluster = clustering.Clustering()
 
 ppo = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim) # continous model (offloading fraction - model1)
-dqn = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
-dqn2 = my_dqn2.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
+#dqn = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
+dqn2 = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
 
 clst = clustering.Clustering()
 nearest = schemes.Nearest()
@@ -123,10 +125,13 @@ def plot():
     plt.show()
     
 if __name__ == '__main__':
+    loss = 1
     params.cloud = 0
     x = -1
     y = 0
     fail = 0
+    avg = 0
+    sum = 0
     for i in range(params.numEdge):
         if (i % params.grid_size == 0):
             x += 1
@@ -142,6 +147,12 @@ if __name__ == '__main__':
             'reward': [],
             'done': []
         }
+        if params.pre_trained:
+            print("Loading pretrained models...")
+            dqn_ = dqn2.load_model(params.woCloud_dqn_path)
+            ppo_ = ppo.load_model(params.woCloud_ppo_path)
+        
+
         # training loop
         total_step = 0
         for eps in range(params.EPS):
@@ -154,7 +165,7 @@ if __name__ == '__main__':
                 params.distribution_mode = 1
                 '''
             clst.form_cluster()
-            clst.visualize_clusters()
+            #clst.visualize_clusters()
             state1, state2_temp = env.reset(-1, 0)
             episode_reward = 0
             eps_r1 = 0
@@ -164,6 +175,7 @@ if __name__ == '__main__':
             action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             # sys.exit()
             for step in range(params.STEP * params.numVeh):
+                params.stepnum = step
                 total_step += 1
                 #print("state1:", state1)
             
@@ -173,7 +185,11 @@ if __name__ == '__main__':
                 params.state2 = state2
                 action2 = dqn2.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 0)  # 두개의 action 가지고 step
-
+                sum += r
+                if step % 10 ==0 and step != 0:
+                    avg = sum/10
+                    #print("average of previous 5 eps rewards: ", avg)
+                    sum = 0
                 # Check for NaN values in r, r1, or r2
                 if any([np.isnan(val) for val in [r, r1, r2]]):
                     r1 = 0
@@ -181,12 +197,18 @@ if __name__ == '__main__':
                     r = 0
                     #print("nan value - did not store in buffer...")
                 else:
-                    buffer['state'].append(state1)
-                    buffer['action'].append(action1)
-                    buffer['reward'].append(r1)
-                    buffer['done'].append(done)
-                    replay_buffer2.add([state2, s2_, [action2], [r2], [done]])
-                    dqn2.epsilon_scheduler.step(total_step)
+                    if avg < r:
+                        repeat = 2
+                    else:
+                        repeat = 1
+                    for twice in range(repeat):
+                        buffer['state'].append(state1)
+                        buffer['action'].append(action1)
+                        buffer['reward'].append(r1)
+                        buffer['done'].append(done)
+                        if action1 != 1:
+                            replay_buffer.add([state2, s2_, [action2], [r2], [done]])
+                            dqn.epsilon_scheduler.step(total_step)
 
                 state1 = s1_
                 state2 = s2_
@@ -228,7 +250,7 @@ if __name__ == '__main__':
                     sample = replay_buffer2.sample(params.dqn_batch)
                     loss = dqn2.learn(sample)
 
-            if eps % 5 == 0 and eps > 0:  # plot and model saving interval
+            if eps % 10 == 0 and eps > 0:  # plot and model saving interval
                 plot()
                 dqn2.save_model(params.woCloud_dqn_path)
                 ppo.save_model(params.woCloud_ppo_path)
@@ -239,9 +261,12 @@ if __name__ == '__main__':
 
             success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
             success_rate.append(success_ratio)
+            print(eps," - ", round(success_ratio,2)*100, "%")
             if total_step > my_dqn2.REPLAY_START_SIZE and len(replay_buffer2.buffer) >= params.dqn_batch:
                 losses.append(loss)
                 #print(loss, type(loss))
 
         dqn2.save_model(params.woCloud_dqn_path)
         ppo.save_model(params.woCloud_ppo_path)
+
+params.cloud = 1

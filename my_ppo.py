@@ -101,7 +101,7 @@ class PolicyNetwork(nn.Module):
         #self.dense1 = nn.Linear(params.state_dim1, 1)
         self.linear1 = nn.Linear(params.state_dim1, hidden_dim)  # Adjust input size after convolution
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        # self.linear3 = nn.Linear(hidden_dim, hidden_dim)
+        #ß self.linear3 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear4 = nn.Linear(hidden_dim, hidden_dim)
 
         self.mean_linear = nn.Linear(hidden_dim, num_actions)
@@ -126,6 +126,7 @@ class PolicyNetwork(nn.Module):
         #x = torch.cat((x1, task), dim=1)  # Ensure second part is also 2D
         x = F.relu(self.linear1(state))
         x = F.relu(self.linear2(x))
+        
 
         mean = self.action_range * torch.sigmoid(self.mean_linear(x))
 

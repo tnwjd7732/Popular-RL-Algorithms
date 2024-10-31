@@ -69,7 +69,7 @@ class EpsilonScheduler():
         return self.epsilon
 
 class QNetwork(nn.Module):
-    def __init__(self, act_shape, obs_shape, hidden_size=256):
+    def __init__(self, act_shape, obs_shape, hidden_size=128):
 
         super(QNetwork, self).__init__()
         
