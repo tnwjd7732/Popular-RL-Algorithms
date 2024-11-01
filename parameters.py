@@ -14,7 +14,7 @@ pre_trained = False
 '''training parameters'''
 EPS = 1000
 
-STEP = 60
+STEP = 10
 GAMMA = 0.99
 
 '''numEdge를 바꾸면 lamb, maxEdge를 함께 조정해주어야 함!'''
@@ -77,19 +77,19 @@ remains = np.zeros(numEdge)
 remains_lev = np.zeros(numEdge)
 hop_count = np.zeros(numEdge)
 temp = np.zeros(numEdge)
-resource_avg = 5
-resource_std = 5
+resource_avg = 10
+resource_std = 9
 
 glob = 0
 CH_glob_ID = -1
 
 '''task information'''
-min_size = 1  * Byte #1 MB
-max_size = 10  * Byte #20MB
-min_cpu = 0.5
+min_size = 0.1  * Byte #1 MB
+max_size = 1  * Byte #20MB
+min_cpu = 1
 max_cpu = 5 # 5Giga cycle per second
 min_time = 0.1
-max_time = 5
+max_time = 2
 unitprice_size = 2 # 차량 지불 함수에서 가중치
 unitprice_cpu = 2 # 차량 지불 함수에서 가중치
 wcomp = 10**26 # 소모 함수에서 가중치
@@ -124,15 +124,15 @@ credit_info = np.zeros(numVeh)
 
 #wocloud 제외하고는 1e-4, or 3e-3처럼 dqn lr을 크게 가져갔었음
 '''
-dqnlr = 8e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 5e-4  # ppo - actor 학습률
-criticlr = 8e-4  # ppo - critic 학습률
-'''
-
-# for fast learning
 dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 1e-4  # ppo - actor 학습률
-criticlr = 3e-4  # ppo - critic 학습률
+actorlr = 1e-5  # ppo - actor 학습률
+criticlr = 3e-5  # ppo - critic 학습률
+
+'''
+# for fast learning
+dqnlr = 1e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
+actorlr = 1e-5  # ppo - actor 학습률
+criticlr = 3e-5  # ppo - critic 학습률
 
 '''
 # for slow learning
@@ -145,8 +145,8 @@ cloud = 1 #default values
 
 scheduler_step = 1000  # 학습률 스케줄러 단계
 scheduler_gamma = 1  # 학습률 스케줄러 감쇠 계수 - 바꾸기 전 0.995
-dqn_batch = 256  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
-ppo_batch = 2048  # ppo 배치 크기 before(1004, 512)
+dqn_batch = 128  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
+ppo_batch = 1024  # ppo 배치 크기 before(1004, 512)
 
 
 # The number of total step per one episode is 2000

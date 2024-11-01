@@ -19,7 +19,7 @@ class Greedy():
         credit = param.credit_info[vehId]
 
         #print("Credit:", credit)
-        req_taskcpu = taskcpu #* credit
+        req_taskcpu = taskcpu * credit
 
         # 만약 자신의 자원이 충분하다면, 자기가 처리하기
         if param.remains[myId] >= req_taskcpu:
@@ -80,7 +80,7 @@ class GreedyCloud():
         credit = param.credit_info[vehId]
 
         # 요청된 작업에 필요한 CPU 자원
-        req_taskcpu = taskcpu #* credit
+        req_taskcpu = taskcpu * credit
 
         # 만약 자신의 자원이 충분하다면, 자기가 처리
         if param.remains[myId] >= req_taskcpu:
@@ -141,7 +141,7 @@ class NearestCloud():
         credit = param.credit_info[vehId]
 
         # 요청된 작업에 필요한 CPU 자원
-        req_taskcpu = taskcpu# * credit
+        req_taskcpu = taskcpu * credit
 
         # 만약 자신의 자원이 충분하다면, 자기가 처리
         if param.remains[myId] >= req_taskcpu:

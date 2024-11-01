@@ -172,7 +172,7 @@ def run_experiment(numVeh, repeat):
 
         for step in range(params.STEP * numVeh):
             
-            if params.remains[params.nearest] > params.resource_avg/2:
+            if params.remains[params.nearest] > params.resource_avg:
                 action1, action2 = nearest.choose_action()
                 s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)  # 두개의 action 가지고 step
             

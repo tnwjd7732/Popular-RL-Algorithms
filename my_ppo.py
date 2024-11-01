@@ -149,6 +149,9 @@ class PolicyNetwork(nn.Module):
             normal = Normal(mean, std)
             action = normal.sample()
         action = torch.clamp(action, 0, self.action_range)
+        # action이 0.95보다 클 때 1로 변환, 나머지는 action 유지
+        #action = torch.where(action > 0.95, torch.tensor(1.0, device=action.device), action)
+
         #print("> PPO state: ", state, "action: ", action)
 
         return action.squeeze(0)

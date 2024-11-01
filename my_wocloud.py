@@ -198,9 +198,9 @@ if __name__ == '__main__':
                     #print("nan value - did not store in buffer...")
                 else:
                     if avg < r:
-                        repeat = 2
-                    else:
                         repeat = 1
+                    else:
+                        repeat = 2
                     for twice in range(repeat):
                         buffer['state'].append(state1)
                         buffer['action'].append(action1)
@@ -208,7 +208,7 @@ if __name__ == '__main__':
                         buffer['done'].append(done)
                         if action1 != 1:
                             replay_buffer.add([state2, s2_, [action2], [r2], [done]])
-                            dqn.epsilon_scheduler.step(total_step)
+                            dqn2.epsilon_scheduler.step(total_step)
 
                 state1 = s1_
                 state2 = s2_

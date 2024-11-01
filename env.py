@@ -105,9 +105,9 @@ class Env():
                         
         for i in range(params.numEdge):
             if params.cloud == 1:
-                params.remains_lev[i] = round(int(params.remains[i])/5,1) # 소수점 한 자리만 남기기
+                params.remains_lev[i] = round(int(params.remains[i])/20,1) # 소수점 한 자리만 남기기
             else:
-                params.remains_lev[i] = round(int(params.remains[i])/5,0) # 소수점 한 자리만 남기기
+                params.remains_lev[i] = round(int(params.remains[i])/20,1) # 소수점 한 자리만 남기기
 
         #print("remains level: ", params.remains)       
 
@@ -133,18 +133,16 @@ class Env():
         self.myCH = myClusterId
         
 
-
-        
-        cloud_resource = [2]
-        cloud_hop = [2]
+        cloud_resource = [0.7 + random.uniform(-0.05, 0.05)]
+        cloud_hop = [0 + random.uniform(-0.05, 0.05)]
 
         if myClusterId is not None:
             if params.cloud == 0:
-                myResource = np.array([round(param.remains[self.nearest]/5,0)]) #클라우드에서는 리소스 넣을 때 *10
+                myResource = np.array([round(param.remains[self.nearest]/20,0)]) #클라우드에서는 리소스 넣을 때 *10
                 #myResource *= 1
             else:
-                myResource = np.array([round(param.remains[self.nearest]/5,1)])
-            #myResource/=1 #아래에서 평균은 lev으로 구하는데 lev은 위에서 /5한 것
+                myResource = np.array([round(param.remains[self.nearest]/20,1)])
+            #myResource/=1 #아래에서 평균은 lev으로 구하는데 lev은 위에서 /20한 것
             sum = 0 
 
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
@@ -160,7 +158,14 @@ class Env():
             taskstate = np.zeros(3)
             #taskstate = [self.taskInfo[i] for i in range(3)]
             # normalize
-            taskstate = [round(self.taskInfo[0]/params.max_size*8,1), round(self.taskInfo[1]/params.max_cpu,1), round(self.taskInfo[2]/params.max_time,1)]
+            #taskstate = [round(self.taskInfo[0]/params.max_size*8,1),  round(self.taskInfo[1]/params.max_cpu,1), round(self.taskInfo[2]/params.max_time,1)]
+            # adopt minmax normalization 
+            taskstate = [
+                (self.taskInfo[0] - params.min_size) / (params.max_size - params.min_size),  # Size 정규화
+                (self.taskInfo[1] - params.min_cpu) / (params.max_cpu - params.min_cpu),     # CPU 정규화
+                (self.taskInfo[2] - params.min_time) / (params.max_time - params.min_time)   # Time 정규화
+            ]
+
             state = np.concatenate((myResource, avgResource, taskstate))
 
             
@@ -173,9 +178,9 @@ class Env():
             cluster_servers.sort()
             cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
             if params.cloud == 1:
-                cluster_hop_count = [round(params.hop_count[i]/15,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+                cluster_hop_count = [round(params.hop_count[i]/13,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
             else:
-                cluster_hop_count = [round(params.hop_count[i]/15,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+                cluster_hop_count = [round(params.hop_count[i]/13,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
 
             cluster_size = len(cluster_servers)
             dummy_size = max(0, params.maxEdge - cluster_size)  # 더미값의 크기 결정
@@ -260,7 +265,12 @@ class Env():
                     else:
                         r1 = 1  # 모델1은 제대로 했음
                     r2 = 0  # 모델2가 잘못
-
+                
+                ''' not good effect
+                if Ttotal * 0.9 < tasktime: # 거의 근사하게 성공했지만 실패로 돌아간 경우.. 둘다 사실 나쁘진 않았던 것 
+                    r1 += 0.5
+                    r2 += 0.5 #but still reward is zero (fail task) 
+                '''
                 self.taskEnd[stepnum] = tasktime
 
             else:  # 성공
@@ -407,7 +417,7 @@ class Env():
             Tloc = local_amount / optimal_resource_loc
 
         hopcount = self.calculate_hopcount(param.edge_pos[self.nearest], param.edge_pos[action2])
-        param.hop_counts.append(15 - hopcount)
+        param.hop_counts.append(13 - hopcount)
         bandwidth = np.random.uniform(0.7, 1) # 1Gbps wired lineksss
         if action2 == 0:
             Ttrans = 0.8
