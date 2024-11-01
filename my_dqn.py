@@ -15,27 +15,25 @@ from torch.nn import MultiheadAttention
 
 # Hyper Parameters
 MAX_EPI=10000
-MAX_STEP = 1000000
+MAX_STEP = 10000
 SAVE_INTERVAL = 20
 TARGET_UPDATE_INTERVAL = 20
 
 BATCH_SIZE = 128
-REPLAY_BUFFER_SIZE = 10000
+REPLAY_BUFFER_SIZE = 1000000
 REPLAY_START_SIZE = 5000
 
 GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
-if params.pre_trained == True:
-    EPSILON_START = 0.1
-else:
-    EPSILON_START = 0.5
+EPSILON_START = 1
 EPSILON_END = 0.0005
 if params.cloud == 1:
     EPSILON_DECAY = 25000
 else:
-    EPSILON_DECAY = 50000
+    EPSILON_DECAY = 5000
 
 greedy = schemes.Greedy()
+nearest = schemes.Nearest()
 device_idx = 0
 if params.GPU:
     #device = torch.device("mps")
@@ -77,6 +75,7 @@ class EpsilonScheduler():
         #print("epsilon:", self.epsilon)
         return self.epsilon
 
+
 class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
         super(QNetwork, self).__init__()
@@ -88,24 +87,31 @@ class QNetwork(nn.Module):
         self.server_attention = MultiheadAttention(embed_dim=16, num_heads=4)
         
         # Fully Connected for task information
-        self.task_fc = nn.Linear(6, hidden_size)  # Adjusted input size to match 6
-        
+        self.task_fc = nn.Linear(4, hidden_size)  # Adjusted input size to match 4
+        if params.cloud == 1:
+            units = 528
+        else:
+            units=  512
         # General Attention between task information and server states
-        self.general_attention = MultiheadAttention(embed_dim=512, num_heads=2)  # Updated embed_dim to 512
+        self.general_attention = MultiheadAttention(embed_dim=units, num_heads=2)  # Updated embed_dim to 512
         
         # Final layers
-        self.fc1 = nn.Linear(512, hidden_size)
+        self.fc1 = nn.Linear(units, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.output = nn.Linear(hidden_size, act_shape)
     
     def forward(self, state):
-        # Extract server states
-        remains = state[:, :params.maxEdge].unsqueeze(1)
-        hops = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
-        task_info = state[:, (params.maxEdge)*2:]  # Task and fraction
-        
+        if params.cloud == 1:
+            remain = state[:, :params.maxEdge+1].unsqueeze(1)
+            hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
+            taskandfrac = state[:, (params.maxEdge+1)*2:]
+        else:
+            remain = state[:, :params.maxEdge].unsqueeze(1)
+            hop = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
+            taskandfrac = state[:, (params.maxEdge)*2:]
+    
         # Self-Attention on remains and hops
-        combined_remain_hop = torch.cat((remains, hops), dim=1)
+        combined_remain_hop = torch.cat((remain, hop), dim=1)
         x = F.relu(self.conv(combined_remain_hop))
         x = x.permute(2, 0, 1)
         x, _ = self.server_attention(x, x, x)
@@ -113,7 +119,7 @@ class QNetwork(nn.Module):
         x = x.flatten(start_dim=1)
 
         # Process task information
-        task_embed = F.relu(self.task_fc(task_info))
+        task_embed = F.relu(self.task_fc(taskandfrac))
         task_embed = task_embed.unsqueeze(0)
 
         # Apply General Attention between task_embed and server state features
@@ -127,6 +133,7 @@ class QNetwork(nn.Module):
         q_values = self.output(combined)
         
         return q_values
+
 
 
 transition = namedtuple('transition', 'state, next_state, action, reward, is_terminal')
@@ -184,12 +191,23 @@ class DQN(object):
                     action = np.random.randint(0, params.action_dim2)
                 else:
                     action = np.random.randint(0, params.wocloud_action_dim2)
+                    '''
+                    action1, action2 = greedy.choose_action(1, params.stepnum)
+                    action2 = torch.tensor(action2).unsqueeze(0).numpy()[0]
+                    if action2 in params.mycluster:
+                        action = params.mycluster.index(action2)
+                    else:
+                        action1, action2 = nearest.choose_action()  # action2가 리스트에 없을 경우 0으로 설정
+                        action = torch.tensor(action2).unsqueeze(0).numpy()[0]
+                        action = params.mycluster.index(action)
+                    '''
+                    
                     #action = params.CH_glob_ID
                     #print(action)
                 
         return action
 
-    def learn(self, sample):
+    def learn(self, sample,):
         # Batch is a list of namedtuple's, the following operation returns samples grouped by keys
         batch_samples = transition(*zip(*sample))
 
@@ -200,28 +218,44 @@ class DQN(object):
         actions = torch.cat(batch_samples.action).to(device)
         rewards = torch.cat(batch_samples.reward).float().to(device)
         is_terminal = torch.cat(batch_samples.is_terminal).to(device)
-
-        # Obtain Q(s, a) using eval_net
+        # Obtain a batch of Q(S_t, A_t) and compute the forward pass.
+        # Note: policy_network output Q-values for all the actions of a state, but all we need is the A_t taken at time t
+        # in state S_t.  Thus we gather along the columns and get the Q-values corresponds to S_t, A_t.
+        # Q_s_a is of size (BATCH_SIZE, 1).
         Q = self.eval_net(states) 
-        Q_s_a = Q.gather(1, actions)
+        Q_s_a=Q.gather(1, actions)
 
-        # Get indices of non-terminal next states
+        # Obtain max_{a} Q(S_{t+1}, a) of any non-terminal state S_{t+1}.  If S_{t+1} is terminal, Q(S_{t+1}, A_{t+1}) = 0.
+        # Note: each row of the network's output corresponds to the actions of S_{t+1}.  max(1)[0] gives the max action
+        # values in each row (since this a batch).  The detach() detaches the target net's tensor from computation graph so
+        # to prevent the computation of its gradient automatically.  Q_s_prime_a_prime is of size (BATCH_SIZE, 1).
+
+        # Get the indices of next_states that are not terminal
         none_terminal_next_state_index = torch.tensor([i for i, is_term in enumerate(is_terminal) if is_term == 0], dtype=torch.int64, device=device)
+        # Select the indices of each row
         none_terminal_next_states = next_states.index_select(0, none_terminal_next_state_index)
 
         Q_s_prime_a_prime = torch.zeros(len(sample), 1, device=device)
-
         if len(none_terminal_next_states) != 0:
-            # DDQN: Use eval_net to select next actions and target_net to evaluate
-            next_action = self.eval_net(none_terminal_next_states).detach().max(1)[1].unsqueeze(1)
-            Q_s_prime_a_prime[none_terminal_next_state_index] = self.target_net(none_terminal_next_states).detach().gather(1, next_action)
+            # below is the original code, but I modify this DQN code to DDQN (Double DQN)
+            Q_s_prime_a_prime[none_terminal_next_state_index] = self.target_net(none_terminal_next_states).detach().max(1)[0].unsqueeze(1)
+            # Choose action using eval_net (Double DQN)
+            # Modify from here to...
+            #next_action = self.eval_net(none_terminal_next_states).detach().max(1)[1].unsqueeze(1)
 
-        # Compute the target with rewards and gamma
-        Q_s_prime_a_prime = (Q_s_prime_a_prime - Q_s_prime_a_prime.mean()) / (Q_s_prime_a_prime.std() + 1e-5)  # normalization
+            # Use target_net to calculate Q value for the chosen action
+            #Q_s_prime_a_prime[none_terminal_next_state_index] = self.target_net(none_terminal_next_states).gather(1, next_action)
+            # ... here (End of modification)
+        # Q_s_prime_a_prime = self.target_net(next_states).detach().max(1, keepdim=True)[0]  # this one is simpler regardless of terminal state
+        Q_s_prime_a_prime = (Q_s_prime_a_prime-Q_s_prime_a_prime.mean())/ (Q_s_prime_a_prime.std() + 1e-5)  # normalization
+        
+        # Compute the target
         target = rewards + GAMMA * Q_s_prime_a_prime
 
         # Update with loss
+        # loss = self.loss_func(target.detach(), Q_s_a)
         loss = F.smooth_l1_loss(target.detach(), Q_s_a)
+        # Zero gradients, backprop, update the weights of policy_net
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()

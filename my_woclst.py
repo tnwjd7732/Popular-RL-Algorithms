@@ -153,10 +153,11 @@ if __name__ == '__main__':
                 action1 = ppo.choose_action(state1)  # ppo로 offloading fraction 만들기     
 
                 action1_distribution[min(int(action1 * 10), 9)] += 1
-
-                state2 = np.concatenate((state2_temp, action1))
+                if step != 0:
+                    state2[-1] = action1
+                else:
+                    state2 = np.concatenate((state2_temp, action1))
                 params.state2 = state2
-
                 action2 = dqn.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
 

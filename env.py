@@ -133,7 +133,7 @@ class Env():
         self.myCH = myClusterId
         
 
-        cloud_resource = [0.7 + random.uniform(-0.05, 0.05)]
+        cloud_resource = [0.5 + random.uniform(-0.05, 0.05)]
         cloud_hop = [0 + random.uniform(-0.05, 0.05)]
 
         if myClusterId is not None:
@@ -148,7 +148,9 @@ class Env():
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
             cluster_servers.sort()
             self.cluster = cluster_servers
+            params.mycluster.clear()
             params.mycluster = self.cluster
+            #print(params.mycluster)
             for server in cluster_servers:
                 sum += param.remains_lev[int(server)]
             avgResource = np.array([sum/len(cluster_servers)])

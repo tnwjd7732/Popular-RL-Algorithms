@@ -9,7 +9,7 @@ task = np.zeros(3)
 time_slot = 1
 
 GPU = False
-pre_trained = False
+pre_trained =   False
 
 '''training parameters'''
 EPS = 1000
@@ -128,24 +128,24 @@ dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 
 actorlr = 1e-5  # ppo - actor 학습률
 criticlr = 3e-5  # ppo - critic 학습률
 
-'''
+
 # for fast learning
-dqnlr = 1e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 1e-5  # ppo - actor 학습률
-criticlr = 3e-5  # ppo - critic 학습률
+dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
+actorlr = 1e-4  # ppo - actor 학습률
+criticlr = 3e-4  # ppo - critic 학습률
 
 '''
 # for slow learning
-dqnlr = 1e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 7e-5  # ppo - actor 학습률
-criticlr = 1e-4  # ppo - critic 학습률
-'''
+dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
+actorlr = 1e-5  # ppo - actor 학습률
+criticlr = 3e-5  # ppo - critic 학습률
+
 cloud = 1 #default values
 
 
 scheduler_step = 1000  # 학습률 스케줄러 단계
 scheduler_gamma = 1  # 학습률 스케줄러 감쇠 계수 - 바꾸기 전 0.995
-dqn_batch = 128  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
+dqn_batch = 1024  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
 ppo_batch = 1024  # ppo 배치 크기 before(1004, 512)
 
 

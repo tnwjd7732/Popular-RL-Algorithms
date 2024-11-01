@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import random
 import my_dqn
-import my_dqn2
 import math
 import clustering 
 import sys
@@ -28,14 +27,11 @@ params.scheduler_gamma = 0.999 # more bigger value to maintain initial learning 
 replay_buffer_size = 1e6
 #replay_buffer = my_sac.ReplayBuffer_SAC(replay_buffer_size)
 replay_buffer = my_dqn.replay_buffer(replay_buffer_size)
-replay_buffer2 = my_dqn.replay_buffer(replay_buffer_size)
-
 env = environment.Env()
 cluster = clustering.Clustering()
 
 ppo = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim) # continous model (offloading fraction - model1)
-#dqn = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
-dqn2 = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
+dqn = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
 
 clst = clustering.Clustering()
 nearest = schemes.Nearest()
@@ -125,7 +121,6 @@ def plot():
     plt.show()
     
 if __name__ == '__main__':
-    loss = 1
     params.cloud = 0
     x = -1
     y = 0
@@ -149,7 +144,7 @@ if __name__ == '__main__':
         }
         if params.pre_trained:
             print("Loading pretrained models...")
-            dqn_ = dqn2.load_model(params.woCloud_dqn_path)
+            dqn_ = dqn.load_model(params.woCloud_dqn_path)
             ppo_ = ppo.load_model(params.woCloud_ppo_path)
         
 
@@ -178,13 +173,21 @@ if __name__ == '__main__':
                 params.stepnum = step
                 total_step += 1
                 #print("state1:", state1)
-            
-                action1 = ppo.choose_action(state1)  # ppo로 offloading fraction 만들기     
+                
+                action1 = ppo.choose_action(state1)  # ppo로 offloading fraction 만들기
                 action1_distribution[min(int(action1 * 10), 9)] += 1
-                state2 = np.concatenate((state2_temp, action1))
+                if step != 0:
+                    state2[-1] = action1
+                else:
+                    state2 = np.concatenate((state2_temp, action1))
                 params.state2 = state2
-                action2 = dqn2.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
+                #print("STATE: ", state2)
+            
+                action2 = dqn.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
+                #print("ACTION: ", action2)
+                
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 0)  # 두개의 action 가지고 step
+                
                 sum += r
                 if step % 10 ==0 and step != 0:
                     avg = sum/10
@@ -195,12 +198,12 @@ if __name__ == '__main__':
                     r1 = 0
                     r2 = 0
                     r = 0
-                    #print("nan value - did not store in buffer...")
+                    print("nan value - did not store in buffer...")
                 else:
                     if avg < r:
                         repeat = 1
                     else:
-                        repeat = 2
+                        repeat = 1
                     for twice in range(repeat):
                         buffer['state'].append(state1)
                         buffer['action'].append(action1)
@@ -208,7 +211,7 @@ if __name__ == '__main__':
                         buffer['done'].append(done)
                         if action1 != 1:
                             replay_buffer.add([state2, s2_, [action2], [r2], [done]])
-                            dqn2.epsilon_scheduler.step(total_step)
+                            dqn.epsilon_scheduler.step(total_step)
 
                 state1 = s1_
                 state2 = s2_
@@ -246,13 +249,13 @@ if __name__ == '__main__':
                     ppo.update(bs, ba, br)
 
                 # update DQN
-                if (step + 1) % params.dqn_batch == 0 and total_step > my_dqn.REPLAY_START_SIZE and len(replay_buffer2.buffer) >= params.dqn_batch:
-                    sample = replay_buffer2.sample(params.dqn_batch)
-                    loss = dqn2.learn(sample)
+                if (step + 1) % params.dqn_batch == 0 and total_step > my_dqn.REPLAY_START_SIZE and len(replay_buffer.buffer) >= params.dqn_batch:
+                    sample = replay_buffer.sample(params.dqn_batch)
+                    loss = dqn.learn(sample)
 
             if eps % 10 == 0 and eps > 0:  # plot and model saving interval
                 plot()
-                dqn2.save_model(params.woCloud_dqn_path)
+                dqn.save_model(params.woCloud_dqn_path)
                 ppo.save_model(params.woCloud_ppo_path)
 
             #print('Episode: ', eps, '| Episode Reward: ', episode_reward, '| Episode Length: ', step)
@@ -262,11 +265,11 @@ if __name__ == '__main__':
             success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
             success_rate.append(success_ratio)
             print(eps," - ", round(success_ratio,2)*100, "%")
-            if total_step > my_dqn2.REPLAY_START_SIZE and len(replay_buffer2.buffer) >= params.dqn_batch:
+            if total_step > my_dqn.REPLAY_START_SIZE and len(replay_buffer.buffer) >= params.dqn_batch:
                 losses.append(loss)
                 #print(loss, type(loss))
 
-        dqn2.save_model(params.woCloud_dqn_path)
+        dqn.save_model(params.woCloud_dqn_path)
         ppo.save_model(params.woCloud_ppo_path)
 
 params.cloud = 1
