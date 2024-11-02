@@ -133,12 +133,12 @@ class Env():
         self.myCH = myClusterId
         
 
-        cloud_resource = [0.5 + random.uniform(-0.05, 0.05)]
+        cloud_resource = [0.9 + random.uniform(-0.05, 0.05)]
         cloud_hop = [0 + random.uniform(-0.05, 0.05)]
 
         if myClusterId is not None:
             if params.cloud == 0:
-                myResource = np.array([round(param.remains[self.nearest]/20,0)]) #클라우드에서는 리소스 넣을 때 *10
+                myResource = np.array([round(param.remains[self.nearest]/20,1)]) #클라우드에서는 리소스 넣을 때 *10
                 #myResource *= 1
             else:
                 myResource = np.array([round(param.remains[self.nearest]/20,1)])
@@ -154,6 +154,7 @@ class Env():
             for server in cluster_servers:
                 sum += param.remains_lev[int(server)]
             avgResource = np.array([sum/len(cluster_servers)])
+            
             #avgResource *= 2
             #if cloud == 0
             #    avgResource *= 1
@@ -172,7 +173,7 @@ class Env():
 
             
         else:
-            dummy_values = np.full(2, 0)  # 클러스터에 속하지 않은 경우 더미값으로 채움
+            dummy_values = np.full(2, -0.1)  # 클러스터에 속하지 않은 경우 더미값으로 채움
             state = np.concatenate((dummy_values, taskstate))
 
         if myClusterId is not None:
@@ -180,13 +181,14 @@ class Env():
             cluster_servers.sort()
             cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
             if params.cloud == 1:
-                cluster_hop_count = [round(params.hop_count[i]/13,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+                cluster_hop_count = [round(params.hop_count[i]/11,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
             else:
-                cluster_hop_count = [round(params.hop_count[i]/13,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
+                cluster_hop_count = [round(params.hop_count[i]/11,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
 
             cluster_size = len(cluster_servers)
             dummy_size = max(0, params.maxEdge - cluster_size)  # 더미값의 크기 결정
-            dummy_values = np.full(dummy_size, 0)  # 더미값을 -10으로 설정
+            
+            dummy_values = np.full(dummy_size, -0.1)  # 더미값을 -10으로 설정
             if cloud == 1:
                 state2 = np.concatenate((cloud_resource, cluster_remains_lev, dummy_values,cloud_hop, cluster_hop_count, dummy_values, taskstate))
             else:
@@ -194,10 +196,10 @@ class Env():
 
         else:
             if cloud == 1:
-                dummy_values = np.full(params.maxEdge+1, 0)  # 클러스터에 속하지 않은 경우 더미값으로 채움
+                dummy_values = np.full(params.maxEdge+1, -0.1)  # 클러스터에 속하지 않은 경우 더미값으로 채움
                 state2 = np.concatenate((dummy_values, dummy_values, taskstate))
             else:
-                dummy_values = np.full(params.maxEdge, 0)  # 클러스터에 속하지 않은 경우 더미값으로 채움
+                dummy_values = np.full(params.maxEdge, -0.1)  # 클러스터에 속하지 않은 경우 더미값으로 채움
                 state2 = np.concatenate((dummy_values, dummy_values, taskstate))
         #print("S1: ", state, " S2: ",state2)
         params.CH_glob_ID = cluster_servers.index(self.myCH)
@@ -419,7 +421,7 @@ class Env():
             Tloc = local_amount / optimal_resource_loc
 
         hopcount = self.calculate_hopcount(param.edge_pos[self.nearest], param.edge_pos[action2])
-        param.hop_counts.append(13 - hopcount)
+        param.hop_counts.append(11 - hopcount)
         bandwidth = np.random.uniform(0.7, 1) # 1Gbps wired lineksss
         if action2 == 0:
             Ttrans = 0.8

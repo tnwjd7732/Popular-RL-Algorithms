@@ -17,7 +17,7 @@ from torch.nn import MultiheadAttention
 MAX_EPI=10000
 MAX_STEP = 10000
 SAVE_INTERVAL = 20
-TARGET_UPDATE_INTERVAL = 20
+TARGET_UPDATE_INTERVAL = 10
 
 BATCH_SIZE = 128
 REPLAY_BUFFER_SIZE = 1000000
@@ -25,12 +25,15 @@ REPLAY_START_SIZE = 5000
 
 GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
-EPSILON_START = 1
-EPSILON_END = 0.0005
+if params.pre_trained == True:
+    EPSILON_START = 0.2
+else:   
+    EPSILON_START = 0.9
+EPSILON_END = 0.005
 if params.cloud == 1:
-    EPSILON_DECAY = 25000
+    EPSILON_DECAY = 100000
 else:
-    EPSILON_DECAY = 5000
+    EPSILON_DECAY = 100000
 
 greedy = schemes.Greedy()
 nearest = schemes.Nearest()
@@ -75,7 +78,6 @@ class EpsilonScheduler():
         #print("epsilon:", self.epsilon)
         return self.epsilon
 
-
 class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
         super(QNetwork, self).__init__()
@@ -88,52 +90,62 @@ class QNetwork(nn.Module):
         
         # Fully Connected for task information
         self.task_fc = nn.Linear(4, hidden_size)  # Adjusted input size to match 4
-        if params.cloud == 1:
-            units = 528
-        else:
-            units=  512
-        # General Attention between task information and server states
-        self.general_attention = MultiheadAttention(embed_dim=units, num_heads=2)  # Updated embed_dim to 512
         
-        # Final layers
-        self.fc1 = nn.Linear(units, hidden_size)
+        # Choose units based on cloud setting
+        self.units = 528 if params.cloud == 1 else 512
+        
+        # General Attention between task information and server states
+        self.general_attention = MultiheadAttention(embed_dim=self.units, num_heads=2)
+        
+        # Final layers for action decision
+        self.fc1 = nn.Linear(self.units, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.output = nn.Linear(hidden_size, act_shape)
-    
+
     def forward(self, state):
         if params.cloud == 1:
-            remain = state[:, :params.maxEdge+1].unsqueeze(1)
+            remain = state[:, :params.maxEdge+1].unsqueeze(1)  # Adding channel dimension
             hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
-            taskandfrac = state[:, (params.maxEdge+1)*2:]
+            task_and_frac = state[:, (params.maxEdge+1)*2:]
         else:
             remain = state[:, :params.maxEdge].unsqueeze(1)
             hop = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
-            taskandfrac = state[:, (params.maxEdge)*2:]
-    
-        # Self-Attention on remains and hops
-        combined_remain_hop = torch.cat((remain, hop), dim=1)
-        x = F.relu(self.conv(combined_remain_hop))
-        x = x.permute(2, 0, 1)
+            task_and_frac = state[:, (params.maxEdge)*2:]
+
+        # Process remains and hops with Conv1D and self-attention
+        server_features = torch.cat((remain, hop), dim=1)
+        x = F.relu(self.conv(server_features))
+        x = x.permute(2, 0, 1)  # Adjust shape for attention layer
         x, _ = self.server_attention(x, x, x)
-        x = x.permute(1, 2, 0).contiguous()
-        x = x.flatten(start_dim=1)
+        x = x.permute(1, 2, 0).contiguous().flatten(start_dim=1)  # Flatten for concatenation
 
-        # Process task information
-        task_embed = F.relu(self.task_fc(taskandfrac))
-        task_embed = task_embed.unsqueeze(0)
+        # Process task and fraction information
+        task_embed = F.relu(self.task_fc(task_and_frac))
 
-        # Apply General Attention between task_embed and server state features
-        combined = torch.cat((x, task_embed.squeeze(0)), dim=1)
-        attn_output, _ = self.general_attention(combined.unsqueeze(0), combined.unsqueeze(0), combined.unsqueeze(0))
-        attn_output = attn_output.squeeze(0)
+        # Adjust `task_embed` size to match `x`
+        if task_embed.size(1) < x.size(1):
+            task_embed = F.pad(task_embed, (0, x.size(1) - task_embed.size(1)))
+        elif task_embed.size(1) > x.size(1):
+            task_embed = task_embed[:, :x.size(1)]
+
+        # Concatenate task_embed and server state representation for joint attention
+        combined = torch.cat((x, task_embed), dim=1)
         
-        # Final FC layers
+        # Ensure combined dimension matches units for attention layer
+        if combined.size(1) != self.units:
+            combined = F.pad(combined, (0, self.units - combined.size(1)))
+
+        # Apply General Attention
+        combined = combined.unsqueeze(0)
+        attn_output, _ = self.general_attention(combined, combined, combined)
+        attn_output = attn_output.squeeze(0)
+
+        # Final decision layers
         combined = F.relu(self.fc1(attn_output))
         combined = F.relu(self.fc2(combined))
         q_values = self.output(combined)
         
         return q_values
-
 
 
 transition = namedtuple('transition', 'state, next_state, action, reward, is_terminal')

@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
             action1_distribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             # sys.exit()
-            for step in range(params.STEP * params.numVeh):
+            for step in range(params.STEP* params.numVeh):
                 total_step += 1
                 #print("state1:", state1)
                 

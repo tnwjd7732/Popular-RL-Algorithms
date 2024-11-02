@@ -9,10 +9,10 @@ task = np.zeros(3)
 time_slot = 1
 
 GPU = False
-pre_trained =   False
+pre_trained = True
 
 '''training parameters'''
-EPS = 1000
+EPS = 2000
 
 STEP = 10
 GAMMA = 0.99
@@ -84,10 +84,10 @@ glob = 0
 CH_glob_ID = -1
 
 '''task information'''
-min_size = 0.1  * Byte #1 MB
-max_size = 1  * Byte #20MB
+min_size = 1  * Byte #1 MB
+max_size = 10  * Byte #20MB
 min_cpu = 1
-max_cpu = 5 # 5Giga cycle per second
+max_cpu = 4 # 5Giga cycle per second
 min_time = 0.1
 max_time = 2
 unitprice_size = 2 # 차량 지불 함수에서 가중치
@@ -128,31 +128,31 @@ dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 
 actorlr = 1e-5  # ppo - actor 학습률
 criticlr = 3e-5  # ppo - critic 학습률
 
-
+'''
 # for fast learning
-dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 1e-4  # ppo - actor 학습률
-criticlr = 3e-4  # ppo - critic 학습률
+dqnlr = 5e-4 # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
+actorlr = 5e-5  # ppo - actor 학습률
+criticlr = 5e-5  # ppo - critic 학습률
 
 '''
 # for slow learning
-dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 1e-5  # ppo - actor 학습률
-criticlr = 3e-5  # ppo - critic 학습률
-
+dqnlr = 1e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
+actorlr = 7e-5  # ppo - actor 학습률
+criticlr =  1e-4  # ppo - critic 학습률
+'''
 cloud = 1 #default values
 
 
 scheduler_step = 1000  # 학습률 스케줄러 단계
 scheduler_gamma = 1  # 학습률 스케줄러 감쇠 계수 - 바꾸기 전 0.995
-dqn_batch = 1024  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
-ppo_batch = 1024  # ppo 배치 크기 before(1004, 512)
+dqn_batch = 256  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
+ppo_batch = 2048  # ppo 배치 크기 before(1004, 512)
 
 
 # The number of total step per one episode is 2000
 
 distribution_mode = 0
-repeat = 2 # just fast testing
+repeat = 2# just fast testing
 hop_counts= []
 
 std_exp = 1

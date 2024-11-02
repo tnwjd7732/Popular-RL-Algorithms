@@ -82,9 +82,11 @@ def run_experiment(numVeh, repeat):
                 action1, action2 = nearest.choose_action()
                 s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)  # 두개의 action 가지고 step
             else:
-
                 action1 = ppo_.choose_action(state1)  # ppo로 offloading fraction 만들기
-                state2 = np.concatenate((state2_temp, action1))
+                if step != 0:
+                    state2[-1] = action1
+                else:
+                    state2 = np.concatenate((state2_temp, action1))
                 params.state2 = state2
                 action2 = dqn_.choose_action(state2, 1)
                 if len(env.cluster) < action2:
@@ -172,7 +174,7 @@ def run_experiment(numVeh, repeat):
 
         for step in range(params.STEP * numVeh):
             
-            if params.remains[params.nearest] > params.resource_avg:
+            if params.remains[params.nearest] > params.resource_avg*0.5:
                 action1, action2 = nearest.choose_action()
                 s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)  # 두개의 action 가지고 step
             
@@ -317,7 +319,7 @@ def plot(results, veh_range):
 
 
 if __name__ == '__main__':
-    veh_range = range(250, 401, 50)
+    veh_range = range(200, 401, 100)
     repeat = params.repeat
     final_results = {
         'our_succ': [],
