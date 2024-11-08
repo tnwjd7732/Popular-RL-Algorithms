@@ -324,29 +324,62 @@ class Clustering():
         plt.show()
         #sys.exit()
         #print("EOV")
-        
+                
 
-    def random_list(self, size, target_mean, target_std):
+    def random_list(self, size, target_mean, target_std, threshold=0.1):
+        grid_size = 6  # Fixed grid size for 6x6 region
+        max_attempts = 1000  # Set a maximum number of attempts to avoid infinite loop
+
+        # Regular random distribution
         if params.distribution_mode == 0:
-            random_values = []
-            if params.std_exp == 0:
-                target_this_turn = random.randint(0, target_std) # 0~target_std 중 매번 새롭게 선택 
-            else:
-                target_this_turn = target_std
-            while len(random_values) < size:
-                value = np.random.normal(loc=target_mean, scale=target_this_turn)
-                if value >= 0:
-                    random_values.append(value)
+            for attempt in range(max_attempts):
+                random_values = []
+                target_this_turn = random.randint(0, target_std) if params.std_exp == 0 else target_std
+                while len(random_values) < size:
+                    value = np.random.normal(loc=target_mean, scale=target_this_turn)
+                    if value >= 0:
+                        random_values.append(value)
+
+                generated_mean = np.mean(random_values)
+                if abs(generated_mean - target_mean) <= threshold * target_mean:
+                    return np.array(random_values)
+            
+            # Return the generated values even if the threshold is not met
             return np.array(random_values)
-        
-        elif params.distribution_mode == 1: #region별로 분포가 다른 경우
-            random_values = []
-            while len(random_values) < int(size/3):
-                value = np.random.normal(loc=target_mean*3, scale=target_std)
-                if value >= 0:
-                    random_values.append(value)
-            while len(random_values) < size:
-                value = np.random.normal(loc=target_mean*0.1, scale=1)
-                if value >= 0:
-                    random_values.append(value)
-            return np.array(random_values)
+
+        # Localized underload distribution
+        elif params.distribution_mode in [1, 2, 3]:
+            for attempt in range(max_attempts):
+                # Initialize all cells with target_mean and set data type to float
+                random_values = np.full((grid_size, grid_size), target_mean, dtype=float)
+                
+                if params.distribution_mode == 1:
+                    underload_cells = 27  # 1/4 of 36 cells -> 9 cells
+                elif params.distribution_mode == 2:
+                    underload_cells = 18  # 1/2 of 36 cells -> 18 cells
+                elif params.distribution_mode == 3:
+                    underload_cells = 9  # 3/4 of 36 cells -> 27 cells
+
+                # Choose random indices for underload cells
+                underload_indices = np.random.choice(grid_size**2, underload_cells, replace=False)
+
+                # Apply low resource values (close to 0) to the selected underload cells
+                for idx in underload_indices:
+                    row, col = divmod(idx, grid_size)
+                    random_values[row, col] = max(np.random.normal(loc=target_mean * 0.1, scale=1), 0)
+
+                # Adjust remaining cells to maintain overall mean close to target_mean
+                remaining_values = random_values[random_values > 0]  # Non-zero cells
+                adjustment_factor = (target_mean * grid_size**2 - np.sum(random_values)) / np.sum(remaining_values)
+                random_values[random_values > 0] *= adjustment_factor
+
+                # Flatten and calculate the mean
+                random_values_flat = random_values.flatten()
+                generated_mean = np.mean(random_values_flat)
+
+                # Check mean threshold
+                if abs(generated_mean - target_mean) <= threshold * target_mean:
+                    return random_values_flat
+
+            # If the threshold is not met after max_attempts, return the current result
+            return random_values_flat

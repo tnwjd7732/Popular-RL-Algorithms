@@ -44,7 +44,7 @@ class Env():
         return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
 
-    def reset(self, step, cloud): # if cloud==0: does not use, if cloud ==1: use cloud
+    def reset(self, step):
         
         #print("Credit information ---- ")
         #print("userplan:", params.userplan, "and!!!", self.credit_info, "and!!!", params.credit)
@@ -104,10 +104,10 @@ class Env():
             param.credit_info = self.credit_info
                         
         for i in range(params.numEdge):
-            if params.cloud == 1:
-                params.remains_lev[i] = round(int(params.remains[i])/20,1) # 소수점 한 자리만 남기기
+            if params.cloud <= 1:
+                params.remains_lev[i] = round(int(params.remains[i])/15,1) # 소수점 한 자리만 남기기
             else:
-                params.remains_lev[i] = round(int(params.remains[i])/20,1) # 소수점 한 자리만 남기기
+                params.remains_lev[i] = round(int(params.remains[i])/15,1) # 소수점 한 자리만 남기기
 
         #print("remains level: ", params.remains)       
 
@@ -132,17 +132,20 @@ class Env():
         #print("My edge: ", self.nearest, "My CH: ", myClusterId)
         self.myCH = myClusterId
         
-
-        cloud_resource = [0.9 + random.uniform(-0.05, 0.05)]
-        cloud_hop = [0 + random.uniform(-0.05, 0.05)]
+        if params.cloud == 1:
+            cloud_resource = [0.9 + random.uniform(-0.05, 0.05)]
+            cloud_hop = [0 + random.uniform(-0.05, 0.05)]
+        else:
+            cloud_resource = [-0.5]
+            cloud_hop = [-0.5]
 
         if myClusterId is not None:
             if params.cloud == 0:
-                myResource = np.array([round(param.remains[self.nearest]/20,1)]) #클라우드에서는 리소스 넣을 때 *10
+                myResource = np.array([round(param.remains[self.nearest]/15,1)]) #클라우드에서는 리소스 넣을 때 *10
                 #myResource *= 1
             else:
-                myResource = np.array([round(param.remains[self.nearest]/20,1)])
-            #myResource/=1 #아래에서 평균은 lev으로 구하는데 lev은 위에서 /20한 것
+                myResource = np.array([round(param.remains[self.nearest]/15,1)])
+            #myResource/=1 #아래에서 평균은 lev으로 구하는데 lev은 위에서 /15한 것
             sum = 0 
 
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
@@ -154,15 +157,9 @@ class Env():
             for server in cluster_servers:
                 sum += param.remains_lev[int(server)]
             avgResource = np.array([sum/len(cluster_servers)])
-            
-            #avgResource *= 2
-            #if cloud == 0
-            #    avgResource *= 1
+
             taskstate = np.zeros(3)
-            #taskstate = [self.taskInfo[i] for i in range(3)]
-            # normalize
-            #taskstate = [round(self.taskInfo[0]/params.max_size*8,1),  round(self.taskInfo[1]/params.max_cpu,1), round(self.taskInfo[2]/params.max_time,1)]
-            # adopt minmax normalization 
+          
             taskstate = [
                 (self.taskInfo[0] - params.min_size) / (params.max_size - params.min_size),  # Size 정규화
                 (self.taskInfo[1] - params.min_cpu) / (params.max_cpu - params.min_cpu),     # CPU 정규화
@@ -173,14 +170,14 @@ class Env():
 
             
         else:
-            dummy_values = np.full(2, -0.1)  # 클러스터에 속하지 않은 경우 더미값으로 채움
+            dummy_values = np.full(2, -0.5)  # 클러스터에 속하지 않은 경우 더미값으로 채움
             state = np.concatenate((dummy_values, taskstate))
 
         if myClusterId is not None:
             cluster_servers = [myClusterId] + params.CMs[myClusterId]
             cluster_servers.sort()
             cluster_remains_lev = [params.remains_lev[i] for i in cluster_servers]
-            if params.cloud == 1:
+            if params.cloud <= 1:
                 cluster_hop_count = [round(params.hop_count[i]/11,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
             else:
                 cluster_hop_count = [round(params.hop_count[i]/11,1) for i in cluster_servers]  # 클러스터에 속한 서버들의 홉 카운트 정보
@@ -188,18 +185,18 @@ class Env():
             cluster_size = len(cluster_servers)
             dummy_size = max(0, params.maxEdge - cluster_size)  # 더미값의 크기 결정
             
-            dummy_values = np.full(dummy_size, -0.1)  # 더미값을 -10으로 설정
-            if cloud == 1:
+            dummy_values = np.full(dummy_size, -0.5)  # 더미값을 -10으로 설정
+            if params.cloud <= 1:
                 state2 = np.concatenate((cloud_resource, cluster_remains_lev, dummy_values,cloud_hop, cluster_hop_count, dummy_values, taskstate))
             else:
                 state2 = np.concatenate((cluster_remains_lev, dummy_values, cluster_hop_count, dummy_values, taskstate))
 
         else:
-            if cloud == 1:
-                dummy_values = np.full(params.maxEdge+1, -0.1)  # 클러스터에 속하지 않은 경우 더미값으로 채움
+            if params.cloud <= 1:
+                dummy_values = np.full(params.maxEdge+1, -0.5)  # 클러스터에 속하지 않은 경우 더미값으로 채움
                 state2 = np.concatenate((dummy_values, dummy_values, taskstate))
             else:
-                dummy_values = np.full(params.maxEdge, -0.1)  # 클러스터에 속하지 않은 경우 더미값으로 채움
+                dummy_values = np.full(params.maxEdge, -0.5)  # 클러스터에 속하지 않은 경우 더미값으로 채움
                 state2 = np.concatenate((dummy_values, dummy_values, taskstate))
         #print("S1: ", state, " S2: ",state2)
         params.CH_glob_ID = cluster_servers.index(self.myCH)
@@ -234,7 +231,7 @@ class Env():
             # ex) hop_count[1]의 의미: nearest 서버 <-> 서버 1과의 홉 카운트
         return hop
 
-    def step(self, action1, action2, stepnum, cloud):
+    def step(self, action1, action2, stepnum):
         if action1 != 1:
             self.valid_cnt+=1
 
@@ -253,28 +250,23 @@ class Env():
                 # 실패 원인에 따른 리워드 분배
                 if Tloc > tasktime and Toff > tasktime:
                     # 두 모델 모두 잘못된 결정
-                    r1 = r2 = 0
+                    r1 = r2 = -2
                 elif Tloc > tasktime:
                     # 모델1이 잘못된 결정 (자원이 없는데도 fraction을 크게 설정한 경우)
                     if math.isinf(Tloc):
-                        r1 = 0  # 명확한 잘못
+                        r1 = -2  # 명확한 잘못
                     else:
-                        r1 = 0.1  # 일부 책임 인정
+                        r1 = -1  # 일부 책임 인정
                    
                     r2 = 1  # 모델 2는 책임 없음
                 elif Toff > tasktime:
                     # 모델2가 잘못된 결정 (다른 서버로 보내면 될 것을 잘못된 서버로 선택)
                     if param.remains[self.nearest] >= optimal_resource_off + optimal_resource_loc:
-                        r1 = 0.1  # 모델1이 잘못한 경우
+                        r1 = -2  # 모델1이 잘못한 경우
                     else:
-                        r1 = 1  # 모델1은 제대로 했음
-                    r2 = 0  # 모델2가 잘못
-                
-                ''' not good effect
-                if Ttotal * 0.9 < tasktime: # 거의 근사하게 성공했지만 실패로 돌아간 경우.. 둘다 사실 나쁘진 않았던 것 
-                    r1 += 0.5
-                    r2 += 0.5 #but still reward is zero (fail task) 
-                '''
+                        r1 = 0  # 모델1은 제대로 했음
+                    r2 = -2  # 모델2가 잘못
+            
                 self.taskEnd[stepnum] = tasktime
 
             else:  # 성공
@@ -314,7 +306,7 @@ class Env():
             return reward, r1, r2, Ttotal
 
 
-        if cloud == 0:
+        if params.cloud == 0:
             action2+=1
         
         # 기존 step 함수
@@ -336,9 +328,9 @@ class Env():
             self.wrong_cnt += 1
             Tloc = local_amount / optimal_resource_loc if action1 else 0
             if Tloc < tasktime:
-                r1, r2, reward, Ttotal = 1, -1, 0, 0
+                r1, r2, reward, Ttotal = -1, -3, 0, 0
             else:
-                r1, r2, reward, Ttotal = 0.1, -1, 0, 0
+                r1, r2, reward, Ttotal = -1, -3, 0, 0
             self.allo_loc[stepnum] = self.allo_neighbor[stepnum] = -1
             self.alloRes_loc[stepnum] = self.alloRes_neighbor[stepnum] = 0
             self.taskEnd[stepnum] = -1
@@ -346,7 +338,7 @@ class Env():
             params.success = False
         else:
             if action2 == 0:
-                Ttrans = 0.8
+                Ttrans = 0.5
                 Tloc = local_amount / optimal_resource_loc if action1 else 0
                 Toff = Ttrans if action1 != 1 else 0
                 reward, r1, r2, Ttotal = calculate_rewards_and_costs(Tloc, Toff, vehId, taskcpu, tasksize, tasktime, optimal_resource_loc, optimal_resource_off, action1, 0)
@@ -388,7 +380,7 @@ class Env():
         #print(f"reward: {reward}, r1: {r1}, r2: {r2}")
         #print(f"req. latency: {tasktime}, Ttotal: {Ttotal}, Tloc: {Tloc}, Toff: {Toff}\n")
 
-        new_state1, new_state2_temp = self.reset(stepnum, cloud)
+        new_state1, new_state2_temp = self.reset(stepnum)
         new_state2 = np.concatenate((new_state2_temp, action1))
 
         # Ensure reward is a float
@@ -424,7 +416,7 @@ class Env():
         param.hop_counts.append(11 - hopcount)
         bandwidth = np.random.uniform(0.7, 1) # 1Gbps wired lineksss
         if action2 == 0:
-            Ttrans = 0.8
+            Ttrans = 0.5
         else:
             Ttrans = (tasksize * (1 - action1)) / (bandwidth * 1000) * hopcount
 
@@ -443,6 +435,7 @@ class Env():
             r2 = 0
 
             if tasktime < Ttotal:  # 실패
+                params.success = False
                 reward = 0
                 if params.userplan == 1:  # 크레딧 기반에서만 바꾸기
                     self.credit_info[vehId] = min(self.credit_info[vehId] + 0.1, param.premium_max if self.plan_info[vehId] else param.basic_max)
@@ -450,22 +443,23 @@ class Env():
                 # 실패 원인에 따른 리워드 분배
                 if Tloc > tasktime and Toff > tasktime:
                     # 두 모델 모두 잘못된 결정
-                    r1 = r2 = 0
+                    r1 = r2 = -2
                 elif Tloc > tasktime:
                     # 모델1이 잘못된 결정 (자원이 없는데도 fraction을 크게 설정한 경우)
                     if math.isinf(Tloc):
-                        r1 = 0  # 명확한 잘못
+                        r1 = -2  # 명확한 잘못
                     else:
-                        r1 = 0.1  # 일부 책임 인정
+                        r1 = -1  # 일부 책임 인정
+                   
                     r2 = 1  # 모델 2는 책임 없음
                 elif Toff > tasktime:
                     # 모델2가 잘못된 결정 (다른 서버로 보내면 될 것을 잘못된 서버로 선택)
                     if param.remains[self.nearest] >= optimal_resource_off + optimal_resource_loc:
-                        r1 = 0.1  # 모델1이 잘못한 경우
+                        r1 = -2  # 모델1이 잘못한 경우
                     else:
-                        r1 = 1  # 모델1은 제대로 했음
-                    r2 = 0  # 모델2가 잘못
-
+                        r1 = 0  # 모델1은 제대로 했음
+                    r2 = -2  # 모델2가 잘못
+            
                 self.taskEnd[stepnum] = tasktime
 
             else:  # 성공
@@ -535,7 +529,7 @@ class Env():
             param.remains[self.nearest] -= optimal_resource_loc if Tloc else 0
 
         done = False
-        new_state1, new_state2_temp = self.reset(stepnum, 1)
+        new_state1, new_state2_temp = self.reset(stepnum)
 
         action1 = np.array(action1, ndmin=1)
         new_state2 = np.concatenate((new_state2_temp, action1))

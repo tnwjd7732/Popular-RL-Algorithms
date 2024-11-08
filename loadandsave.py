@@ -12,6 +12,6 @@ print("start loading")
 dqn = dqn_.load_model(params.dqn_path)
 ppo = ppo_.load_model(params.ppo_path)
 
-dqn_.save_model(params.baseline_dqn_path)
-ppo_.save_model(params.baseline_ppo_path)
+dqn_.save_model(params.staticClst_dqn_path)
+ppo_.save_model(params.staticClst_ppo_path)
 print("end of saving model")

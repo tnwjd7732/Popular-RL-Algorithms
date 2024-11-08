@@ -1,365 +1,208 @@
 import env as environment
 import parameters as params
-params.distribution_mode = 1
-import time
 import numpy as np
 from IPython.display import clear_output
 import matplotlib.pyplot as plt
-import random
-import math
-import sys
 import no_RL_scheme as schemes
 import clustering
 import my_ppo
 import my_dqn
-import my_dqn2
 
-def run_experiment(numVeh, repeat):
-    print("Experiment settings")
-    print("numveh: ", numVeh)
-    print(" max size: ", params.max_size, " min size: ", params.min_size)
-    print(" max cpu: ", params.max_cpu, " min cpu: ", params.min_cpu)
+env = environment.Env()
+clst = clustering.Clustering()
 
-    params.distribution_mode = 1
-    params.numVeh = numVeh
+# 모델 불러오기
+ppo_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)
+dqn_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+ppo = ppo_.load_model(params.ppo_path)
+dqn = dqn_.load_model(params.dqn_path)
+
+ppo_woclst_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)
+dqn_woclst_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+ppo_woclst = ppo_woclst_.load_model(params.woClst_ppo_path)
+dqn_woclst = dqn_woclst_.load_model(params.woClst_dqn_path)
+
+ppo_staticClst_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)
+dqn_staticClst_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+ppo_staticClst = ppo_staticClst_.load_model(params.staticClst_ppo_path)
+dqn_staticClst = dqn_staticClst_.load_model(params.staticClst_dqn_path)
+
+ppo_woCloud_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)
+dqn_woCloud_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
+ppo_woCloud = ppo_woCloud_.load_model(params.woCloud_ppo_path)
+dqn_woCloud = dqn_woCloud_.load_model(params.woCloud_dqn_path)
+
+def run_experiment(distribution_mode, env, ppo_, dqn_, ppo_wocloud_, dqn_wocloud_, ppo_staticClst_, dqn_staticClst_):
+    x = -1
+    for i in range(params.numEdge):
+        if i % params.grid_size == 0:
+            x += 1
+            y = 0
+        params.edge_pos[i] = [0.5 + y, 0.5 + x]
+        y += 1
+
+    # 실험 결과를 저장할 딕셔너리
     results = {
-        'our_succ': [],
-        'our_reward': [],
-        'woclst_succ': [],
-        'woclst_reward': [],
-        'wocloud_succ': [],
-        'wocloud_reward': [],
-        'near_succ': [],
-        'near_reward': [],
-        'cloud_near_succ': [],
-        'cloud_near_reward': [],
-        'gree_succ': [],
-        'gree_reward': [],
-        'cloud_gree_succ': [],
-        'cloud_gree_reward': [],
-        'cloud_gree2_succ': [],
-        'cloud_gree2_reward': [],
-        'gree2_succ': [],
-        'gree2_reward': [],
-        'staticclst_succ': [],
-        'staticclst_reward': []
+        'our_succ': [], 'our_reward': [],
+        'woclst_succ': [], 'woclst_reward': [],
+        'staticclst_succ': [], 'staticclst_reward': [],
+        'woCloud_succ': [], 'woCloud_reward': [],
+        'LF_succ': [], 'LF_reward': [],
+        'Greedy1_succ': [], 'Greedy1_reward': [],
+        'Greedy2_succ': [], 'Greedy2_reward': [],
+        'LFCloud_succ': [], 'LFCloud_reward': [],
+        'Greedy1Cloud_succ': [], 'Greedy1Cloud_reward': [],
+        'Greedy2Cloud_succ': [], 'Greedy2Cloud_reward': []
     }
-    
-    env = environment.Env()
-    ppo_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)  # continuous model
-    dqn_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
-    ppo = ppo_.load_model(params.ppo_path)
-    dqn = dqn_.load_model(params.dqn_path)
 
-    ppo_woclst_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)
-    dqn_woclst_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
-    ppo_woclst = ppo_woclst_.load_model(params.woClst_ppo_path)
-    dqn_woclst = dqn_woclst_.load_model(params.woClst_dqn_path)
+    params.distribution_mode = distribution_mode
 
-    params.cloud = 0
-    ppo_wocloud_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)
-    dqn_wocloud_ = my_dqn.DQN(env, params.wocloud_action_dim2, params.wocloud_state_dim2)
-    ppo_wocloud = ppo_wocloud_.load_model(params.woCloud_ppo_path)
-    dqn_wocloud = dqn_wocloud_.load_model(params.woCloud_dqn_path)
-    params.cloud = 1
-
-    ppo_staticClst_ = my_ppo.PPO(params.state_dim1, params.action_dim1, hidden_dim=params.hidden_dim)
-    dqn_staticClst_ = my_dqn.DQN(env, params.action_dim2, params.state_dim2)
-    ppo_staticClst = ppo_staticClst_.load_model(params.staticClst_ppo_path)
-    dqn_staticClst = dqn_staticClst_.load_model(params.staticClst_dqn_path)
-
+    # 비교 스킴 초기화
     nearest = schemes.Nearest()
-    greedy = schemes.Greedy()
-    clst = clustering.Clustering()
-    nearest_cloud = schemes.NearestCloud()
-    greedy_cloud = schemes.GreedyCloud()
-
-    for _ in range(repeat):
-        x = -1
-        for i in range(params.numEdge):
-            if (i % params.grid_size == 0):
-                x += 1
-                y = 0
-            params.edge_pos[i] = [0.5 + y, 0.5 + x]
-            y += 1
-
-        '''our scheme'''
-        fail = 0
-        clst.form_cluster()
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-
-        for step in range(params.STEP * numVeh):
-            action1 = ppo_.choose_action(state1)
-            state2 = np.concatenate((state2_temp, action1))
-            params.state2 = state2
-            action2 = dqn_.choose_action(state2, 1)
-            if len(env.cluster) < action2:
-                action2 = 0
-            s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)
-            state1 = s1_
-            state2 = s2_
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['our_succ'].append(success_ratio)
-        results['our_reward'].append(episode_reward)
-
-        '''RL with static clst scheme'''
-        fail = 0
-        clst.form_static_cluster()
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-        for step in range(params.STEP * numVeh):
-            action1 = ppo_staticClst_.choose_action(state1)
-            state2 = np.concatenate((state2_temp, action1))
-            params.state2 = state2
-            action2 = dqn_staticClst_.choose_action(state2, 1)
-            s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)
-            state1 = s1_
-            state2 = s2_
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['staticclst_succ'].append(success_ratio)
-        results['staticclst_reward'].append(episode_reward)
-
-        '''NearestCloud scheme'''
-        fail = 0
-        clst.form_cluster()
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-        for step in range(params.STEP * numVeh):
-            action1, action2 = nearest_cloud.choose_action(step)
-            s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)
-            state1 = s1_
-            state2 = s2_
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['cloud_near_succ'].append(success_ratio)
-        results['cloud_near_reward'].append(episode_reward)
-
-        '''GreedyCloud 1-hop scheme'''
-        fail = 0
-        hop = 1
-        params.remains = clst.random_list(params.numEdge, params.resource_avg, params.resource_std)
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-        for step in range(params.STEP * numVeh):
-            action1, action2 = greedy_cloud.choose_action(hop, step)
-            s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)
-            state1 = s1_
-            state2 = s2_
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['cloud_gree_succ'].append(success_ratio)
-        results['cloud_gree_reward'].append(episode_reward)
-
-        '''GreedyCloud 2-hop scheme'''
-        fail = 0
-        hop = 2
-        params.remains = clst.random_list(params.numEdge, params.resource_avg, params.resource_std)
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-        for step in range(params.STEP * numVeh):
-            action1, action2 = greedy_cloud.choose_action(hop, step)
-            s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)
-            state1 = s1_
-            state2 = s2_
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['cloud_gree2_succ'].append(success_ratio)
-        results['cloud_gree2_reward'].append(episode_reward)
-
-        '''RL without clustering scheme'''
-        fail = 0
-        clst.form_cluster_woclst()
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-        for step in range(params.STEP * numVeh):
-            action1 = ppo_woclst_.choose_action(state1)
-            state2 = np.concatenate((state2_temp, action1))
-            params.state2 = state2
-            action2 = dqn_woclst_.choose_action(state2, 1)
-            s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)
-            state1 = s1_
-            state2 = s2_
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['woclst_succ'].append(success_ratio)
-        results['woclst_reward'].append(episode_reward)
-
-        '''without cloud scheme'''
-        params.cloud = 0
-        fail = 0
-        clst.form_cluster()
-        state1, state2_temp = env.reset(-1, 0)
-        episode_reward = 0
-        for step in range(params.STEP * params.numVeh):
-            if params.remains[params.nearest] > params.resource_avg/2:
-                action1, action2 = nearest.choose_action()
-                s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)
-            else:   
-                action1 = ppo_wocloud_.choose_action(state1)
-                state2 = np.concatenate((state2_temp, action1))
-                params.state2 = state2
-                action2 = dqn_wocloud_.choose_action(state2, 1)
-                if len(env.cluster) < action2:
-                    action2 = 0
-                s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 0)
-            state1 = s1_
-            state2 = s2_
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['wocloud_succ'].append(success_ratio)
-        results['wocloud_reward'].append(episode_reward)
-        params.cloud = 1
-
-        '''nearest'''
-        fail = 0
-        params.remains = clst.random_list(params.numEdge, params.resource_avg, params.resource_std)
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-        for step in range(params.STEP * numVeh):
-            action1, action2 = nearest.choose_action()
-            s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['near_succ'].append(success_ratio)
-        results['near_reward'].append(episode_reward)
-
-        '''greedy (1-hop)'''
-        hop = 1
-        fail = 0
-        params.remains = clst.random_list(params.numEdge, params.resource_avg, params.resource_std)
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-        for step in range(params.STEP * numVeh):
-            action1, action2 = greedy.choose_action(hop, step)
-            s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['gree_succ'].append(success_ratio)
-        results['gree_reward'].append(episode_reward)
-
-        '''greedy (2-hop)'''
-        hop = 2
-        fail = 0
-        params.remains = clst.random_list(params.numEdge, params.resource_avg, params.resource_std)
-        state1, state2_temp = env.reset(-1, 1)
-        episode_reward = 0
-        for step in range(params.STEP * numVeh):
-            action1, action2 = greedy.choose_action(hop, step)
-            s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)
-            episode_reward += r
-            if r == 0:
-                fail += 1
-
-        success_ratio = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
-        results['gree2_succ'].append(success_ratio)
-        results['gree2_reward'].append(episode_reward)
+    greedy1 = schemes.Greedy()
+    greedy2 = schemes.Greedy()
+    LF = schemes.Nearest()
+    LFCloud = schemes.NearestCloud()
+    Greedy1Cloud = schemes.GreedyCloud()
+    Greedy2Cloud = schemes.GreedyCloud()
     
+    schemes_dict = {
+        'our': (True, ppo_, dqn_, clst.form_cluster, 'our_succ', 'our_reward', None, None, 1),
+        'woclst': (True, ppo_woclst_, dqn_woclst_, clst.form_cluster_woclst, 'woclst_succ', 'woclst_reward', None, None, 1),
+        'staticclst': (True, ppo_staticClst_, dqn_staticClst_, clst.form_static_cluster, 'staticclst_succ', 'staticclst_reward', None, None, 1),
+        'woCloud': (True, ppo_woCloud_, dqn_woCloud_, clst.form_cluster, 'woCloud_succ', 'woCloud_reward', None, None, 0),
+        'LF': (False, None, None, LF, 'LF_succ', 'LF_reward', None, None, 1),
+        'Greedy 1': (False, None, None, greedy1, 'Greedy1_succ', 'Greedy1_reward', 1, None, 1),
+        'Greedy 2': (False, None, None, greedy2, 'Greedy2_succ', 'Greedy2_reward', 2, None, 1),
+        'LF-Cloud': (False, None, None, LFCloud, 'LFCloud_succ', 'LFCloud_reward', None, None, 1),
+        'Greedy Cloud1': (False, None, None, Greedy1Cloud, 'Greedy1Cloud_succ', 'Greedy1Cloud_reward', 1, None, 1),
+        'Greedy Cloud2': (False, None, None, Greedy2Cloud, 'Greedy2Cloud_succ', 'Greedy2Cloud_reward', 2, None, 1)
+    }
+
+    for key, (is_rl, ppo_model, dqn_model, scheme, succ_key, reward_key, hop, step_param, cloud_setting) in schemes_dict.items():
+        fail = 0
+        episode_reward = 0
+        params.cloud = cloud_setting  # 클라우드 사용 설정
+        
+        if is_rl:
+            # 클러스터 초기화 호출
+            if key == 'woclst':
+                clst.form_cluster_woclst()
+            elif key == 'staticclst':
+                clst.form_static_cluster()
+            else:
+                clst.form_cluster()
+        else:
+            params.remains = clst.random_list(params.numEdge, params.resource_avg, params.resource_std)
+
+        state1, state2_temp = env.reset(-1)
+        for step in range(params.STEP * params.numVeh):
+            if ppo_model and dqn_model:
+                action1 = ppo_model.choose_action(state1)
+                state2 = np.concatenate((state2_temp, action1)) if step == 0 else np.copy(state2)
+                state2[-1] = action1
+                params.state2 = state2
+                action2 = dqn_model.choose_action(state2, 1)
+                if len(env.cluster) < action2:
+                    if params.task[2] > 0.5:
+                        action2 = 0
+                    else:
+                        _, action2 = nearest.choose_action(step)
+                s1_, s2_, r, _, _, _ = env.step(action1, action2, step)
+            else:
+                if hop is not None:
+                    action1, action2 = scheme.choose_action(hop, step)
+                else:
+                    action1, action2 = scheme.choose_action(step)
+                s1_, s2_, r, _, _, _ = env.step2(action1, action2, step)
+            
+            state1, state2 = s1_, s2_
+            episode_reward += r
+            if r == 0:
+                fail += 1
+        
+        success_ratio = (params.STEP * params.numVeh - fail) / (params.STEP * params.numVeh)
+        
+        results[succ_key].append(success_ratio)
+        results[reward_key].append(episode_reward)
+
     avg_results = {key: np.mean(values) for key, values in results.items()}
     return avg_results
 
-def plot(results, veh_range):
+def plot(results):
     clear_output(True)
-    plt.rcParams.update({'font.size': params.font_size - 5})
     plt.rcParams['font.family'] = 'Times New Roman'
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8), dpi=300)
 
-    font_size = params.font_size
-    # Success Rate Plot
-    ax1.plot(veh_range, results['near_succ'], label="Nearest", color='cyan', linestyle='--', linewidth=2, marker='o')
-    ax1.plot(veh_range, results['gree_succ'], label="Greedy (1-hop)", color='orange', linestyle='--', linewidth=2, marker='s')
-    ax1.plot(veh_range, results['gree2_succ'], label="Greedy (2-hop)", color='magenta', linestyle='--', linewidth=2, marker='^')
-    ax1.plot(veh_range, results['our_succ'], label="Proposed", color='purple', linestyle='-', linewidth=2, marker='D')
-    ax1.plot(veh_range, results['woclst_succ'], label="Without clustering", color='purple', linestyle='--', linewidth=2, marker='x')
-    ax1.plot(veh_range, results['staticclst_succ'], label="Static clustering", color='purple', linestyle='-.', linewidth=2, marker='s')
-    ax1.plot(veh_range, results['cloud_near_succ'], label="Nearest Cloud", color='blue', linestyle='-', linewidth=2, marker='o')
-    ax1.plot(veh_range, results['cloud_gree_succ'], label="Greedy Cloud", color='green', linestyle='-', linewidth=2, marker='s')
-    ax1.plot(veh_range, results['cloud_gree2_succ'], label="Greedy Cloud", color='red', linestyle='-', linewidth=2, marker='^')
+    font_size = params.font_size  # 폰트 크기 설정
+    mode_labels = ['No Overload', '1/4 Overload', '1/2 Overload', '3/4 Overload']
 
-    ax1.set_xlabel('Number of Vehicles', fontsize=font_size + 10)
+
+    # 성공률(success rate) 그래프
+    ax1.plot(mode_labels, results['our_succ'], label='Proposed', color='purple', linestyle='-', linewidth=2, marker='D')
+    ax1.plot(mode_labels, results['woclst_succ'], label='Without Clustering', color='purple', linestyle='--', linewidth=2, marker='D')
+    ax1.plot(mode_labels, results['staticclst_succ'], label='Static Clustering', color='purple', linestyle='-.', linewidth=2, marker='s')
+    ax1.plot(mode_labels, results['woCloud_succ'], label='Without Cloud', color='purple', linestyle=':', linewidth=2, marker='x')
+
+    # LF와 Greedy 스킴의 성공률
+    ax1.plot(mode_labels, results['LF_succ'], label='Local First', color='blue', linestyle='--', linewidth=2, marker='o')
+    ax1.plot(mode_labels, results['LFCloud_succ'], label='LF Cloud', color='blue', linestyle='-', linewidth=2, marker='o')
+    ax1.plot(mode_labels, results['Greedy1_succ'], label='Greedy(1-hop)', color='green', linestyle='--', linewidth=2, marker='s')
+    ax1.plot(mode_labels, results['Greedy1Cloud_succ'], label='Greedy Cloud(1-hop)', color='green', linestyle='-', linewidth=2, marker='s')
+    ax1.plot(mode_labels, results['Greedy2_succ'], label="Greedy(2-hop)", color='red', linestyle='--', linewidth=2, marker='^')
+    ax1.plot(mode_labels, results['Greedy2Cloud_succ'], label="Greedy Cloud(2-hop)", color='red', linestyle='-', linewidth=2, marker='^')
+
+    # 축 라벨 및 범례 설정
+    ax1.set_xlabel('Resource Standard Deviation', fontsize=font_size + 10)
     ax1.set_ylabel('Success Rate', fontsize=font_size + 10)
-    ax1.tick_params(axis='both', which='major', labelsize=font_size)
+    ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=font_size - 3, frameon=False)
     ax1.grid(True, linestyle='--', linewidth=0.5)
-    ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=font_size-3, frameon=False)
+    ax1.tick_params(axis='both', which='major', labelsize=font_size+3)
 
-    # Reward Plot
-    ax2.plot(veh_range, results['near_reward'], label="Nearest", color='cyan', linestyle='--', linewidth=2, marker='o')
-    ax2.plot(veh_range, results['gree_reward'], label="Greedy (1-hop)", color='orange', linestyle='--', linewidth=2, marker='s')
-    ax2.plot(veh_range, results['gree2_reward'], label="Greedy (2-hop)", color='magenta', linestyle='--', linewidth=2, marker='^')
-    ax2.plot(veh_range, results['our_reward'], label="Proposed", color='purple', linestyle='-', linewidth=2, marker='D')
-    ax2.plot(veh_range, results['woclst_reward'], label="Without clustering", color='purple', linestyle='--', linewidth=2, marker='x')
-    ax2.plot(veh_range, results['staticclst_reward'], label="Static clustering", color='purple', linestyle='-.', linewidth=2, marker='s')
-    ax2.plot(veh_range, results['cloud_near_reward'], label="Nearest Cloud", color='blue', linestyle='-', linewidth=2, marker='o')
-    ax2.plot(veh_range, results['cloud_gree_reward'], label="Greedy Cloud", color='green', linestyle='-', linewidth=2, marker='s')
-    ax2.plot(veh_range, results['cloud_gree2_reward'], label="Greedy Cloud", color='red', linestyle='-', linewidth=2, marker='^')
 
-    ax2.set_xlabel('Number of Vehicles', fontsize=font_size + 10)
+    # 보상(reward) 그래프
+    ax2.plot(mode_labels, results['our_reward'], label='Proposed', color='purple', linestyle='-', linewidth=2, marker='D')
+    ax2.plot(mode_labels, results['woclst_reward'], label='Without Clustering', color='purple', linestyle='--', linewidth=2, marker='D')
+    ax2.plot(mode_labels, results['staticclst_reward'], label='Static Clustering', color='purple', linestyle='-.', linewidth=2, marker='s')
+    ax2.plot(mode_labels, results['woCloud_reward'], label='Without Cloud', color='purple', linestyle=':', linewidth=2, marker='x')
+
+    # LF와 Greedy 스킴의 보상
+    ax2.plot(mode_labels, results['LF_reward'], label='Local First', color='blue', linestyle='--', linewidth=2, marker='o')
+    ax2.plot(mode_labels, results['LFCloud_reward'], label='LF Cloud', color='blue', linestyle='-', linewidth=2, marker='o')
+    ax2.plot(mode_labels, results['Greedy1_reward'], label='Greedy(1-hop)', color='green', linestyle='--', linewidth=2, marker='s')
+    ax2.plot(mode_labels, results['Greedy1Cloud_reward'], label='Greedy Cloud(1-hop)', color='green', linestyle='-', linewidth=2, marker='s')
+    ax2.plot(mode_labels, results['Greedy2_reward'], label="Greedy(2-hop)", color='red', linestyle='--', linewidth=2, marker='^')
+    ax2.plot(mode_labels, results['Greedy2Cloud_reward'], label="Greedy Cloud(2-hop)", color='red', linestyle='-', linewidth=2, marker='^')
+
+    # 축 라벨 및 범례 설정
+    ax2.set_xlabel('Resource Standard Deviation', fontsize=font_size + 10)
     ax2.set_ylabel('Average Reward', fontsize=font_size + 10)
-    ax2.tick_params(axis='both', which='major', labelsize=font_size)
+    ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=font_size - 3, frameon=False)
     ax2.grid(True, linestyle='--', linewidth=0.5)
-    ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=font_size-3, frameon=False)
+    ax2.tick_params(axis='both', which='major', labelsize=font_size+3)
+
 
     plt.tight_layout()
     plt.show()
 
-if __name__ == '__main__':
-    veh_range = range(250, 401, 50)
-    repeat = params.repeat
-    final_results = {
-        'our_succ': [],
-        'our_reward': [],
-        'woclst_succ': [],
-        'woclst_reward': [],
-        'wocloud_succ': [],
-        'wocloud_reward': [],
-        'near_succ': [],
-        'near_reward': [],
-        'cloud_near_succ': [],
-        'cloud_near_reward': [],
-        'gree_succ': [],
-        'gree_reward': [],
-        'cloud_gree_succ': [],
-        'cloud_gree_reward': [],
-        'cloud_gree2_succ': [],
-        'cloud_gree2_reward': [],        
-        'gree2_succ': [],
-        'gree2_reward': [],
-        'staticclst_succ': [],
-        'staticclst_reward': []
-    }
 
-    for numVeh in veh_range:
-        avg_results = run_experiment(numVeh, repeat)
+
+if __name__ == '__main__':
+    repeat = params.repeat
+    params.numVeh = 300  # 차량 수를 고정
+
+    final_results = {key: [] for key in [
+        'our_succ', 'our_reward', 'woclst_succ', 'woclst_reward',
+        'woCloud_succ', 'woCloud_reward', 'LF_succ', 'LF_reward',
+        'Greedy1_succ', 'Greedy1_reward', 'Greedy2_succ', 'Greedy2_reward',
+        'staticclst_succ', 'staticclst_reward', 'LFCloud_succ', 'LFCloud_reward',
+        'Greedy1Cloud_succ', 'Greedy1Cloud_reward', 'Greedy2Cloud_succ', 'Greedy2Cloud_reward',
+
+    ]}
+
+    for mode in range(4):  # distribution_mode 0 to 3
+        avg_results = run_experiment(mode, env, ppo_, dqn_, ppo_woCloud_, dqn_woCloud_, ppo_staticClst_, dqn_staticClst_)
         for key in final_results.keys():
             final_results[key].append(avg_results[key])
 
-    plot(final_results, veh_range)
+    plot(final_results)

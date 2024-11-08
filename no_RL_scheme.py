@@ -5,7 +5,7 @@ environment = env.Env()
 
 
 class Nearest():
-    def choose_action(self):
+    def choose_action(self, step):
         action2 = param.nearest
         action1 = 1 # always process itself (no offloading)
         return action1, action2
@@ -17,22 +17,12 @@ class Greedy():
 
         vehId = stepnum % param.numVeh
         credit = param.credit_info[vehId]
-
-        #print("Credit:", credit)
-        req_taskcpu = taskcpu * credit
-
-        # 만약 자신의 자원이 충분하다면, 자기가 처리하기
-        if param.remains[myId] >= req_taskcpu:
-            action2 = myId
-            action1 = 1
         
-        # 그렇지 않은 경우, 자신의 n-hop 이웃 중 가장 자원이 많은 서버에게 toss
+        action2 = self.greedy_action(myId, n)
+        if action2 == myId:
+            action1 = 1
         else:
-            action2 = self.greedy_action(myId, n)
-            #print("best neighbor =  ", action2)
-            action1 = 0 #모두 오프로딩하는 것 (자신이 처리하는 것 전혀 없음)
-
-        action1 = 0 # no partial offloading strategy
+            action1 = 0
         return action1, action2
     
     def greedy_action(self, nodeId, n):
@@ -50,7 +40,7 @@ class Greedy():
             neighbors = []
             for i in range(numEdge):
                 if i == nodeId:
-                    continue
+                    neighbors.append(i) #자기 자신도 고려 대상에 포함
                 x, y = param.edge_pos[i]
                 distance = np.sqrt((node_x - x)**2 + (node_y - y)**2)
                 if distance <= n * (param.radius*2):
@@ -79,21 +69,20 @@ class GreedyCloud():
         vehId = stepnum % param.numVeh
         credit = param.credit_info[vehId]
 
+        action2 = self.greedy_action(myId, n)
+        vehId = stepnum % param.numVeh
+        credit = param.credit_info[vehId]
+
         # 요청된 작업에 필요한 CPU 자원
         req_taskcpu = taskcpu * credit
-
-        # 만약 자신의 자원이 충분하다면, 자기가 처리
-        if param.remains[myId] >= req_taskcpu:
-            action2 = myId
-            action1 = 1  # 자기 자신이 처리
+        
+        # 이웃 중 가장 자원이 많은 서버도 처리할 수 없는 경우 클라우드로 보냄
+        if param.remains[action2] < req_taskcpu:
+            action2 = 0  # 클라우드로 오프로딩
+            action1 = 0  # 모두 오프로딩
         else:
-            # 자신의 n-hop 이웃 중 가장 자원이 많은 서버에게 오프로딩
-            action2 = self.greedy_action(myId, n)
-            
-            # 이웃 중 가장 자원이 많은 서버도 처리할 수 없는 경우 클라우드로 보냄
-            if action2 == -1 or param.remains[action2] < req_taskcpu:
-                action2 = 0  # 클라우드로 오프로딩
-                action1 = 0  # 모두 오프로딩
+            if action2 == myId:
+                action1 = 1
             else:
                 action1 = 0  # 이웃에게 오프로딩
 
@@ -113,7 +102,7 @@ class GreedyCloud():
             neighbors = []
             for i in range(numEdge):
                 if i == nodeId:
-                    continue
+                    neighbors.append(i)
                 x, y = param.edge_pos[i]
                 distance = np.sqrt((node_x - x) ** 2 + (node_y - y) ** 2)
                 if distance <= n * (param.radius * 2):

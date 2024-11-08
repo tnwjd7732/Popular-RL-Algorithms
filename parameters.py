@@ -9,7 +9,7 @@ task = np.zeros(3)
 time_slot = 1
 
 GPU = False
-pre_trained = True
+pre_trained =False
 
 '''training parameters'''
 EPS = 2000
@@ -21,7 +21,7 @@ GAMMA = 0.99
 numEdge = 36
 numVeh = 300
 lamb = 2 #시스템 내 클러스터 개수 (K-means에서 K와 같은 역할함)
-maxEdge = int(numEdge/lamb)+int(math.sqrt(numEdge)) #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
+maxEdge = int(numEdge/lamb)+int(math.sqrt(numEdge)/2) #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
 CHs = []
 CMs = [[]]
 nearest = -1
@@ -84,16 +84,16 @@ glob = 0
 CH_glob_ID = -1
 
 '''task information'''
-min_size = 1  * Byte #1 MB
-max_size = 10  * Byte #20MB
+min_size = 0.1  * Byte #1 MB
+max_size = 3  * Byte #20MB
 min_cpu = 1
-max_cpu = 4 # 5Giga cycle per second
+max_cpu = 3 # 5Giga cycle per second
 min_time = 0.1
-max_time = 2
+max_time = 1
 unitprice_size = 2 # 차량 지불 함수에서 가중치
 unitprice_cpu = 2 # 차량 지불 함수에서 가중치
 wcomp = 10**26 # 소모 함수에서 가중치
-wtrans = 0.1 # 소모 함수에서 가중치
+wtrans = 0.15 #12 소모 함수에서 가중치
 
 grid_size = int(math.sqrt(numEdge))
 edge_pos = np.zeros((numEdge, 2))
@@ -115,7 +115,7 @@ basic_init = (basic_min+basic_max)/2 #now: 1.4
 premium_min = 1.6
 premium_max = 2.0
 premium_init = (premium_max+premium_min)/2 #now: 2
-cloud_trans_price = 1.5
+cloud_trans_price = 1.0
 '''plot parameters '''
 font_size = 18
 credit_info = np.zeros(numVeh) 
@@ -131,14 +131,14 @@ criticlr = 3e-5  # ppo - critic 학습률
 '''
 # for fast learning
 dqnlr = 5e-4 # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 5e-5  # ppo - actor 학습률
-criticlr = 5e-5  # ppo - critic 학습률
+actorlr = 7e-5  # ppo - actor 학습률
+criticlr = 7e-5  # ppo - critic 학습률
 
 '''
 # for slow learning
-dqnlr = 1e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 7e-5  # ppo - actor 학습률
-criticlr =  1e-4  # ppo - critic 학습률
+dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
+actorlr = 3e-4  # ppo - actor 학습률
+criticlr =  3e-4  # ppo - critic 학습률
 '''
 cloud = 1 #default values
 
@@ -152,12 +152,10 @@ ppo_batch = 2048  # ppo 배치 크기 before(1004, 512)
 # The number of total step per one episode is 2000
 
 distribution_mode = 0
-repeat = 2# just fast testing
+repeat = 6# just fast testing
 hop_counts= []
 
 std_exp = 1
-
-
 realtime = 1
 costpaid = 1
 success = True

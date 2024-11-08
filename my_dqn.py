@@ -26,11 +26,11 @@ REPLAY_START_SIZE = 5000
 GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
 if params.pre_trained == True:
-    EPSILON_START = 0.2
+    EPSILON_START = 0.1
 else:   
     EPSILON_START = 0.9
 EPSILON_END = 0.005
-if params.cloud == 1:
+if params.cloud <= 1:
     EPSILON_DECAY = 100000
 else:
     EPSILON_DECAY = 100000
@@ -77,25 +77,25 @@ class EpsilonScheduler():
     def get_epsilon(self):
         #print("epsilon:", self.epsilon)
         return self.epsilon
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 class QNetwork(nn.Module):
     def __init__(self, act_shape, obs_shape, hidden_size=128):
         super(QNetwork, self).__init__()
 
-        # Conv1D for remains and hop
+        # Conv1D for remains and hop with expanded channels
         self.conv = nn.Conv1d(in_channels=2, out_channels=16, kernel_size=1, stride=1, padding=0)
         
-        # Self-Attention for server states
-        self.server_attention = MultiheadAttention(embed_dim=16, num_heads=4)
-        
         # Fully Connected for task information
-        self.task_fc = nn.Linear(4, hidden_size)  # Adjusted input size to match 4
+        self.task_fc = nn.Linear(4, hidden_size)  # Task and fraction information
         
         # Choose units based on cloud setting
-        self.units = 528 if params.cloud == 1 else 512
+        self.units = 560 if params.cloud <= 1 else 544  # Adjusted for the increased out_channels
         
         # General Attention between task information and server states
-        self.general_attention = MultiheadAttention(embed_dim=self.units, num_heads=2)
+        self.general_attention = nn.MultiheadAttention(embed_dim=self.units, num_heads=1)
         
         # Final layers for action decision
         self.fc1 = nn.Linear(self.units, hidden_size)
@@ -103,7 +103,7 @@ class QNetwork(nn.Module):
         self.output = nn.Linear(hidden_size, act_shape)
 
     def forward(self, state):
-        if params.cloud == 1:
+        if params.cloud <= 1:
             remain = state[:, :params.maxEdge+1].unsqueeze(1)  # Adding channel dimension
             hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
             task_and_frac = state[:, (params.maxEdge+1)*2:]
@@ -112,12 +112,10 @@ class QNetwork(nn.Module):
             hop = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
             task_and_frac = state[:, (params.maxEdge)*2:]
 
-        # Process remains and hops with Conv1D and self-attention
+        # Process remains and hops with Conv1D
         server_features = torch.cat((remain, hop), dim=1)
         x = F.relu(self.conv(server_features))
-        x = x.permute(2, 0, 1)  # Adjust shape for attention layer
-        x, _ = self.server_attention(x, x, x)
-        x = x.permute(1, 2, 0).contiguous().flatten(start_dim=1)  # Flatten for concatenation
+        x = x.view(state.size(0), -1)  # Flatten for concatenation (batch_size, flattened_dim)
 
         # Process task and fraction information
         task_embed = F.relu(self.task_fc(task_and_frac))
@@ -199,7 +197,7 @@ class DQN(object):
                 action = torch.max(actions_value, 1)[1].data.cpu().numpy()[0]     # return the argmax
                 # print(action)
             else:   # random
-                if params.cloud == 1:
+                if params.cloud <= 1:
                     action = np.random.randint(0, params.action_dim2)
                 else:
                     action = np.random.randint(0, params.wocloud_action_dim2)

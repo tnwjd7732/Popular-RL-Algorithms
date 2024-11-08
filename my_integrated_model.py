@@ -144,7 +144,7 @@ if __name__ == '__main__':
             fail = 0
             clst.form_cluster()
             #clst.visualize_clusters()
-            state1, state2_temp = env.reset(-1, 1)
+            state1, state2_temp = env.reset(-1)
             episode_reward = 0
             eps_r1 = 0
             eps_r2 = 0
@@ -165,7 +165,7 @@ if __name__ == '__main__':
                 params.state2 = state2
                 action2 = dqn.choose_action(state2, 0)  # 0 means training phase (take epsilon greedy)
                     
-                s1_, s2_, r, r1, r2, done = env.step(action1, action2, step, 1)  # 두개의 action 가지고 step
+                s1_, s2_, r, r1, r2, done = env.step(action1, action2, step)  # 두개의 action 가지고 step
                 
                 sum += r
                 if step % 10 ==0 and step != 0:
@@ -180,14 +180,15 @@ if __name__ == '__main__':
                     #print("nan value - did not store in buffer...")
                 else:
                     if avg > r:
-                        repeat = 2
+                        repeat = 1
                     else:
                         repeat = 1
                     for twice in range(repeat):
-                        buffer['state'].append(state1)
-                        buffer['action'].append(action1)
-                        buffer['reward'].append(r1)
-                        buffer['done'].append(done)
+                        if r1 != -1:
+                            buffer['state'].append(state1)
+                            buffer['action'].append(action1)
+                            buffer['reward'].append(r1)
+                            buffer['done'].append(done)
                         if action1 != 1:
                             replay_buffer.add([state2, s2_, [action2], [r2], [done]])
                             dqn.epsilon_scheduler.step(total_step)
