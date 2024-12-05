@@ -121,6 +121,7 @@ class Clustering():
         # 각각의 리스트를 오름차순으로 정렬
         params.CHs = sorted(self.CH)
         params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
+    
     def form_cluster(self):
         while True:  # 멤버 수가 조건을 만족하지 않을 경우 반복
             # 초기화
@@ -229,19 +230,19 @@ class Clustering():
         params.CHs = sorted(self.CH)
         params.CMs = {ch_id: sorted(members) for ch_id, members in self.cluster_members.items()}
 
+
     def get_neighbors(self, nodeId):
-            """ Get n-hop neighbors of the given nodeId """
-            node_x, node_y = params.edge_pos[nodeId]
-            neighbors = []
-            for i in range(params.numEdge):
-                if i == nodeId:
-                    continue
-                x, y = params.edge_pos[i]
-                distance = np.sqrt((node_x - x)**2 + (node_y - y)**2)
-                if distance <= 1 * (params.radius*2):
-                    neighbors.append(i)
-            #print(neighbors)
-            return neighbors
+        node_x, node_y = params.edge_pos[nodeId]
+        neighbors = []
+        for i in range(params.numEdge):
+            if i == nodeId:
+                continue
+            x, y = params.edge_pos[i]
+            distance = np.sqrt((node_x - x)**2 + (node_y - y)**2)
+            if distance <= 1 * (params.radius * 2):
+                neighbors.append(i)
+        return neighbors
+
 
     def select_best_neighbor(self, members, neighbors):
         best_neighbor = None
@@ -283,7 +284,7 @@ class Clustering():
         i = 0
         while len(selected_indices) < k and i < len(sorted_indices):
             index = sorted_indices[i]
-            if not any(self.is_adjacent(index, selected_index,3) for selected_index in selected_indices):
+            if not any(self.is_adjacent(index, selected_index,2) for selected_index in selected_indices):
                 selected_indices.append(index)
                 selected_values.append(self.local_remains[index])
             i += 1
@@ -294,8 +295,7 @@ class Clustering():
         return np.mean(params.remains)
     
     def visualize_clusters(self):
-        #print("cluster visualize")
-        
+        # 클러스터 헤드마다 고유한 색을 설정
         colors = cm.rainbow(np.linspace(0, 1, len(self.CH)))
         color_map = {ch_id: color for ch_id, color in zip(self.CH, colors)}
 
@@ -303,17 +303,29 @@ class Clustering():
         for ch_id in self.CH:
             ch_pos = divmod(ch_id, self.grid_size)
             ch_avg = self.cluster_averages[ch_id]
-            plt.scatter(ch_pos[1] + 0.5, ch_pos[0] + 0.5, color=color_map[ch_id], edgecolor='black', s=200, marker='s')
-            plt.text(ch_pos[1] + 0.5, ch_pos[0] + 0.7, f"{params.remains[ch_id]:.1f}\n(Avg: {ch_avg:.1f})",
-                     fontsize=9, ha='center', va='center', color='black')
             
+            # 클러스터 헤드 표시
+            if params.remains[ch_id] < 2:
+                plt.scatter(ch_pos[1] + 0.5, ch_pos[0] + 0.5, color=color_map[ch_id], edgecolor='black', s=200, marker='*')
+            else:
+                plt.scatter(ch_pos[1] + 0.5, ch_pos[0] + 0.5, color=color_map[ch_id], edgecolor='black', s=200, marker='s')
+                
+            plt.text(ch_pos[1] + 0.5, ch_pos[0] + 0.7, f"{params.remains[ch_id]:.1f}\n(Avg: {ch_avg:.1f})",
+                    fontsize=9, ha='center', va='center', color='black')
+            
+            # 클러스터 멤버 표시
             for member in self.cluster_members[ch_id]:
                 member_pos = divmod(member, self.grid_size)
-                plt.scatter(member_pos[1] + 0.5, member_pos[0] + 0.5, color=color_map[ch_id], s=100)
-                plt.text(member_pos[1] + 0.5, member_pos[0] + 0.7, f"{params.remains[member]:.1f}",
-                         fontsize=9, ha='center', va='center', color='black')
                 
-        
+                if params.remains[member] < 2:
+                    plt.scatter(member_pos[1] + 0.5, member_pos[0] + 0.5, color=color_map[ch_id], s=100, marker='*')
+                else:
+                    plt.scatter(member_pos[1] + 0.5, member_pos[0] + 0.5, color=color_map[ch_id], s=100)
+                    
+                plt.text(member_pos[1] + 0.5, member_pos[0] + 0.7, f"{params.remains[member]:.1f}",
+                        fontsize=9, ha='center', va='center', color='black')
+            
+        # 그래프 설정
         plt.xlim(0, self.grid_size)
         plt.ylim(0, self.grid_size)
         plt.gca().invert_yaxis()
@@ -322,64 +334,67 @@ class Clustering():
         plt.grid(True)
         plt.title(f'Cluster Visualization (Global Avg: {self.glob_avg:.1f})')
         plt.show()
-        #sys.exit()
-        #print("EOV")
-                
 
-    def random_list(self, size, target_mean, target_std, threshold=0.1):
-        grid_size = 6  # Fixed grid size for 6x6 region
+
+    def random_list(self, size, target_mean, target_std, threshold=0.05):
+        grid_size = int(np.sqrt(size))  # Assuming grid is square
         max_attempts = 1000  # Set a maximum number of attempts to avoid infinite loop
 
-        # Regular random distribution
         if params.distribution_mode == 0:
+            # For distribution_mode == 0, generate a normal distribution matching target_mean and target_std
             for attempt in range(max_attempts):
-                random_values = []
-                target_this_turn = random.randint(0, target_std) if params.std_exp == 0 else target_std
-                while len(random_values) < size:
-                    value = np.random.normal(loc=target_mean, scale=target_this_turn)
-                    if value >= 0:
-                        random_values.append(value)
+                random_values = np.random.normal(loc=target_mean, scale=params.resource_std, size=size)
+                random_values = np.clip(random_values, 0, None)  # Ensure non-negative values
+                if abs(np.mean(random_values) - target_mean) <= threshold * target_mean:
+                    return random_values
+            raise ValueError("Failed to generate a valid resource distribution within max_attempts for distribution_mode 0.")
 
-                generated_mean = np.mean(random_values)
-                if abs(generated_mean - target_mean) <= threshold * target_mean:
-                    return np.array(random_values)
-            
-            # Return the generated values even if the threshold is not met
-            return np.array(random_values)
+        for attempt in range(max_attempts):
+            # Initialize grid with zeros for distribution_mode 1, 2, 3
+            random_values = np.zeros((grid_size, grid_size))
 
-        # Localized underload distribution
-        elif params.distribution_mode in [1, 2, 3]:
-            for attempt in range(max_attempts):
-                # Initialize all cells with target_mean and set data type to float
-                random_values = np.full((grid_size, grid_size), target_mean, dtype=float)
-                
-                if params.distribution_mode == 1:
-                    underload_cells = 27  # 1/4 of 36 cells -> 9 cells
-                elif params.distribution_mode == 2:
-                    underload_cells = 18  # 1/2 of 36 cells -> 18 cells
-                elif params.distribution_mode == 3:
-                    underload_cells = 9  # 3/4 of 36 cells -> 27 cells
+            # Calculate overloaded cells based on mode
+            overloaded_cells = size * [0.25, 0.5, 0.75][params.distribution_mode - 1]
 
-                # Choose random indices for underload cells
-                underload_indices = np.random.choice(grid_size**2, underload_cells, replace=False)
+            # Find valid (n, m) pairs
+            possible_shapes = [(n, m) for n in range(2, grid_size + 1)
+                            for m in range(2, grid_size + 1) 
+                            if n * m == overloaded_cells and n <= 8 and m <= 8]
 
-                # Apply low resource values (close to 0) to the selected underload cells
-                for idx in underload_indices:
-                    row, col = divmod(idx, grid_size)
-                    random_values[row, col] = max(np.random.normal(loc=target_mean * 0.1, scale=1), 0)
 
-                # Adjust remaining cells to maintain overall mean close to target_mean
-                remaining_values = random_values[random_values > 0]  # Non-zero cells
-                adjustment_factor = (target_mean * grid_size**2 - np.sum(random_values)) / np.sum(remaining_values)
-                random_values[random_values > 0] *= adjustment_factor
+            if not possible_shapes:
+                raise ValueError(f"No valid (n, m) shapes for overloaded cells = {overloaded_cells}")
 
-                # Flatten and calculate the mean
-                random_values_flat = random_values.flatten()
-                generated_mean = np.mean(random_values_flat)
+            # Randomly select one (n, m) pair
+            n, m = random.choice(possible_shapes)
 
-                # Check mean threshold
-                if abs(generated_mean - target_mean) <= threshold * target_mean:
-                    return random_values_flat
+            # Randomly place (n, m) rectangle on grid
+            start_row = np.random.randint(0, grid_size - n + 1)
+            start_col = np.random.randint(0, grid_size - m + 1)
 
-            # If the threshold is not met after max_attempts, return the current result
-            return random_values_flat
+            # Fill (n, m) rectangle with overloaded resources
+            overloaded_value = target_mean * 0.1  # Overloaded servers have low resources
+            for i in range(start_row, start_row + n):
+                for j in range(start_col, start_col + m):
+                    random_values[i, j] = max(np.random.normal(loc=overloaded_value, scale=target_std * 0.05), 0)
+
+            # Flatten and calculate non-overloaded cells
+            non_overloaded_indices = random_values.flatten() == 0
+            non_overloaded_count = non_overloaded_indices.sum()
+
+            # Adjust remaining cells to ensure the overall mean equals target_mean
+            total_overloaded_sum = np.sum(random_values)
+            remaining_target_mean = ((target_mean * size) - total_overloaded_sum) / non_overloaded_count
+            non_overloaded_values = np.random.normal(loc=remaining_target_mean, scale=target_std, size=non_overloaded_count)
+            non_overloaded_values = np.clip(non_overloaded_values, 0, None)  # Ensure non-negative values
+
+            # Assign to non-overloaded cells
+            random_values_flat = random_values.flatten()
+            random_values_flat[non_overloaded_indices] = non_overloaded_values
+            random_values = random_values_flat.reshape(grid_size, grid_size)
+
+            # Check if the generated distribution meets the threshold
+            if abs(np.mean(random_values) - target_mean) <= threshold * target_mean:
+                return random_values.flatten()
+
+        raise ValueError("Failed to generate a valid resource distribution within max_attempts.")

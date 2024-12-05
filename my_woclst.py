@@ -192,7 +192,7 @@ if __name__ == '__main__':
                 eps_r1 += r1
                 eps_r2 += r2
 
-                if r == 0:
+                if params.success == False:
                     fail += 1
 
                 # update PPO

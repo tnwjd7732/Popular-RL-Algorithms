@@ -8,35 +8,66 @@ Giga = 1000 * Mega
 task = np.zeros(3)
 time_slot = 1
 
-GPU = False
-pre_trained =False
+'''network scale'''
+numEdge = 64
+numVeh = 700
+lamb = 4 ## of clusters in the network
+maxEdge = int(numEdge/lamb)+int(math.sqrt(numEdge)/2) # max number of edge servers in a cluster
+grid_size = int(math.sqrt(numEdge))
 
-'''training parameters'''
-EPS = 2000
+'''initialize edge server position'''
+edge_pos = np.zeros((numEdge, 2))
+radius = 0.5
+x = -1
+y = 0
+for i in range(numEdge):
+    if i % grid_size == 0:
+        x += radius*2
+        y = 0
+    edge_pos[i] = [radius + y, radius + x]
+    y += radius*2
 
-STEP = 10
-GAMMA = 0.99
 
-'''numEdge를 바꾸면 lamb, maxEdge를 함께 조정해주어야 함!'''
-numEdge = 36
-numVeh = 300
-lamb = 2 #시스템 내 클러스터 개수 (K-means에서 K와 같은 역할함)
-maxEdge = int(numEdge/lamb)+int(math.sqrt(numEdge)/2) #하나의 클러스터에 최대 몇개의 엣지가 포함될 수 있는지를 정의함
-CHs = []
-CMs = [[]]
-nearest = -1
+'''task profile range'''
+min_size = 0.1  * Byte #1 MB
+max_size = 2  * Byte #20MB
+min_cpu = 1
+max_cpu = 3 # 5Giga cycle per second
+min_time = 0.1
+max_time = 1
 
-userplan=1
-# userplan: 1 - 우리 알고리즘 (프리미엄 베이직 유저로 나누고 할당량 다르게)
-# 1 이외의 값 > 그 값이 바로 고정 할당량으로 설정되고 변화하지 않음
-mycluster = []
+'''cost function parameter'''
+unitprice_size = 0.1 # 차량 지불 함수에서 가중치
+unitprice_cpu = 2 # 차량 지불 함수에서 가중치
+wcomp = 2e+23 # 소모 함수에서 가중치
+wtrans = 0.01 #12 소모 함수에서 가중치
+cloud_trans_price = 0.1
+
+'''credit based RA (resource allocation) algorithm params'''
+basic_min = 1.2
+basic_max = 1.6
+basic_init = (basic_min+basic_max)/2 
+premium_min = 1.6
+premium_max = 2.0
+premium_init = (premium_max+premium_min)/2 
+
+'''hyper parameters'''
+dqnlr = 5e-4 # lr for dqn Q network
+actorlr = 1e-5  # lr for ppo actor net (=policy net) 이걸  1e-4, -5 이상 수준으로 줄이면 오히려 성능이 오르다가 다시 줄어드는 현상 보임
+criticlr = 1e-4  # lr for ppo critic net (=value net)
+cloud = 1 # 1: using cloud, 0: did not use cloud
+dqn_batch = 256  
+ppo_batch = 2048 
+
+'''learning rate scheduler parameter'''
+scheduler_step = 1000 
+scheduler_gamma = 0.999 # did not use (current)
+
+# ------------------------------- DO NOT MODIFY ------------------------ #
 
 '''model path'''
-# 9월 10일에 새롭게 트레이닝하면서 1자를 붙임
-# 즉, 이전에 학습된 모델은 ppo_, dqn_, woclst_dqn_,...의 이름으로 저장되어 있음!!
 ppo_path = './model/ppo1_'+str(int(numEdge))+str(int(lamb))
 dqn_path = './model/dqn1_'+str(int(numEdge))+str(int(lamb))
-
 
 baseline_ppo_path = './model/base_ppo1_'+str(int(numEdge))+str(int(lamb))
 baseline_dqn_path = './model/base_dqn1_'+str(int(numEdge))+str(int(lamb))
@@ -53,12 +84,9 @@ woCloud_ppo_path = './model/wocloud_ppo1_'+str(int(numEdge))+str(int(lamb))
 staticClst_dqn_path = './model/staticClst_dqn1_'+str(int(numEdge))+str(int(lamb))
 staticClst_ppo_path = './model/staticClst_ppo1_'+str(int(numEdge))+str(int(lamb))
 
-
-'''global state'''
+'''define state, action dimension'''
 state1 = np.zeros(1+3+1) 
 state2 = np.zeros((maxEdge+1)*2+3+1)
-
-'''state, action dimension'''
 state_dim1 = 2+3  #ppo
 state_dim2 = (maxEdge+1)*2+3+1#ppo
 action_dim1 = 1 #sac
@@ -68,96 +96,53 @@ single_state_dim=(maxEdge+1)*2+3
 single_action1_dim=1
 single_action2_dim=maxEdge + 1
 
-'''wocloud dimension'''
-wocloud_state_dim2 = (maxEdge)*2+3+1#ppo
-wocloud_action_dim2 = maxEdge#sac
-
-'''edge server resources'''
-remains = np.zeros(numEdge)
-remains_lev = np.zeros(numEdge)
-hop_count = np.zeros(numEdge)
-temp = np.zeros(numEdge)
-resource_avg = 10
-resource_std = 9
-
-glob = 0
-CH_glob_ID = -1
-
-'''task information'''
-min_size = 0.1  * Byte #1 MB
-max_size = 3  * Byte #20MB
-min_cpu = 1
-max_cpu = 3 # 5Giga cycle per second
-min_time = 0.1
-max_time = 1
-unitprice_size = 2 # 차량 지불 함수에서 가중치
-unitprice_cpu = 2 # 차량 지불 함수에서 가중치
-wcomp = 10**26 # 소모 함수에서 가중치
-wtrans = 0.15 #12 소모 함수에서 가중치
-
-grid_size = int(math.sqrt(numEdge))
-edge_pos = np.zeros((numEdge, 2))
-
-radius = 0.5
-
-
 '''graph'''
 wrong_cnt = []
 epsilon_logging = []
 cloud_cnt = []
 valid_cnt = []
 
-'''Resource allocation algorithm params'''
-basic_min = 1.2
-basic_max = 1.6
-basic_init = (basic_min+basic_max)/2 #now: 1.4
+'''clustering parameter'''
+CHs = []
+CMs = [[]]
 
-premium_min = 1.6
-premium_max = 2.0
-premium_init = (premium_max+premium_min)/2 #now: 2
-cloud_trans_price = 1.0
+'''edge server information'''
+remains = np.zeros(numEdge)
+remains_lev = np.zeros(numEdge)
+hop_count = np.zeros(numEdge)
+temp = np.zeros(numEdge)
+resource_avg = 10
+resource_std = 7
+
+'''enable GPU(mps or cuda)'''
+GPU = False
+
+'''load pre-trained model'''
+pre_trained = False
+
+'''basic RL setting'''
+EPS = 500
+STEP = 5
+GAMMA = 0.99
+
 '''plot parameters '''
 font_size = 18
 credit_info = np.zeros(numVeh) 
 
-#0: our scheme, 1: only cheap one, 2: only expensive one
-
-#wocloud 제외하고는 1e-4, or 3e-3처럼 dqn lr을 크게 가져갔었음
-'''
-dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 1e-5  # ppo - actor 학습률
-criticlr = 3e-5  # ppo - critic 학습률
-
-'''
-# for fast learning
-dqnlr = 5e-4 # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 7e-5  # ppo - actor 학습률
-criticlr = 7e-5  # ppo - critic 학습률
-
-'''
-# for slow learning
-dqnlr = 5e-3  # dqn의 Q 네트워크 학습률 / 1e-4에서 올려봄 (loss가 수렴하지 않아서)
-actorlr = 3e-4  # ppo - actor 학습률
-criticlr =  3e-4  # ppo - critic 학습률
-'''
-cloud = 1 #default values
-
-
-scheduler_step = 1000  # 학습률 스케줄러 단계
-scheduler_gamma = 1  # 학습률 스케줄러 감쇠 계수 - 바꾸기 전 0.995
-dqn_batch = 256  # dqn 배치 크기 / 학습 안정화를 위해 32에서 키워봄 > 128
-ppo_batch = 2048  # ppo 배치 크기 before(1004, 512)
-
-
-# The number of total step per one episode is 2000
-
+'''shared variable across all of the files'''
+nearest = -1
+userplan=1 # userplan: 1 - 우리 알고리즘 (프리미엄 베이직 유저로 나누고 할당량 다르게)
+# 1 이외의 값 > 그 값이 바로 고정 할당량으로 설정되고 변화하지 않음
+mycluster = []
+glob = 0
+CH_glob_ID = -1
 distribution_mode = 0
-repeat = 6# just fast testing
+repeat = 6
 hop_counts= []
-
 std_exp = 1
 realtime = 1
 costpaid = 1
-success = True
-
+success = True 
 stepnum = 0
+actor_loss = []
+critic_loss = []

@@ -4,7 +4,6 @@ import env as environment
 import torch
 import parameters as params
 params.cloud = 0 
-
 import argparse
 import time
 import numpy as np
@@ -18,13 +17,13 @@ import clustering
 import sys
 import no_RL_scheme as schemes
 
+# 현재로는 pre-trained model을 사용하고 있어서 lr half로 조정
+params.actorlr /= 10
+params.ppo_batch *= 1
+params.criticlr /= 10
+params.dqnlr /= 2
 
-params.actorlr *= 1
-params.criticlr *= 1
-params.dqnlr *= 1
-params.scheduler_gamma = 1 # more bigger value to maintain initial learning rate setting
-
-replay_buffer_size = 1e6
+replay_buffer_size = 1e5
 #replay_buffer = my_sac.ReplayBuffer_SAC(replay_buffer_size)
 replay_buffer = my_dqn.replay_buffer(replay_buffer_size)
 env = environment.Env()
@@ -93,9 +92,9 @@ def plot():
     ax4.tick_params(axis='both', which='major', labelsize=font_size - 5)
 
     # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
-    ax5.plot(params.cloud_cnt[1:])
+    ax5.plot(losses)
     ax5.set_xlabel('Episode', fontsize=font_size)
-    ax5.set_ylabel('Cloud selection', fontsize=font_size)
+    ax5.set_ylabel('DDQN Loss', fontsize=font_size)
     ax5.tick_params(axis='both', which='major',labelsize=font_size - 5)
 
      # 네 번째 서브플롯에 wrong count를 첫 번째 요소를 제외하고 그림
@@ -113,11 +112,13 @@ def plot():
     ax7.tick_params(axis='both', which='major',labelsize=font_size - 5)
     
 
-    # 두번째 서브플롯에 losses
-    ax8.plot(losses)
+   # 두번째 서브플롯에 losses
+    ax8.plot(params.actor_loss)
+    ax8.plot(params.critic_loss)
+    ax8.legend()
     ax8.set_xlabel('Episode', fontsize=font_size)
-    ax8.set_ylabel('Loss', fontsize=font_size)
-    ax8.tick_params(axis='both', which='major',labelsize=font_size - 5)
+    ax8.set_ylabel('PPO Loss', fontsize=font_size)
+    ax8.tick_params(axis='both', which='major', labelsize=font_size-5)
     plt.show()
     
 if __name__ == '__main__':
@@ -189,8 +190,8 @@ if __name__ == '__main__':
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step)  # 두개의 action 가지고 step
                 
                 sum += r
-                if step % 10 ==0 and step != 0:
-                    avg = sum/10
+                if step % 1000 ==0 and step != 0:
+                    avg = sum/1000
                     #print("average of previous 5 eps rewards: ", avg)
                     sum = 0
                 # Check for NaN values in r, r1, or r2
@@ -200,18 +201,17 @@ if __name__ == '__main__':
                     r = 0
                     print("nan value - did not store in buffer...")
                 else:
-                    if avg > r:
+                    if avg < r:
                         repeat = 1
                     else:
-                        repeat = 2
-                    if r2 > 0.5 and params.task[2] < 0.5:
-                        repeat = 2
+                        repeat = 1
+                    
+                    if r1 != -1:
+                        buffer['state'].append(state1)
+                        buffer['action'].append(action1)
+                        buffer['reward'].append(r1)
+                        buffer['done'].append(done)
                     for twice in range(repeat):
-                        if r1 != -1:
-                            buffer['state'].append(state1)
-                            buffer['action'].append(action1)
-                            buffer['reward'].append(r1)
-                            buffer['done'].append(done)
                         if action1 != 1:
                             replay_buffer.add([state2, s2_, [action2], [r2], [done]])
                             dqn.epsilon_scheduler.step(total_step)
@@ -222,7 +222,7 @@ if __name__ == '__main__':
                 eps_r1 += r1
                 eps_r2 += r2
 
-                if r == 0:
+                if params.success == False:
                     fail += 1
 
                 # update PPO
@@ -256,7 +256,7 @@ if __name__ == '__main__':
                     sample = replay_buffer.sample(params.dqn_batch)
                     loss = dqn.learn(sample)
 
-            if eps % 10 == 0 and eps > 0:  # plot and model saving interval
+            if eps % 5 == 0 and eps > 0:  # plot and model saving interval
                 plot()
                 dqn.save_model(params.woCloud_dqn_path)
                 ppo.save_model(params.woCloud_ppo_path)

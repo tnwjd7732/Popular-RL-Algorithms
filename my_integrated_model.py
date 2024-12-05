@@ -103,7 +103,9 @@ def plot():
     
 
     # 두번째 서브플롯에 losses
-    ax8.plot(losses)
+    ax8.plot(params.actor_loss)
+    ax8.plot(params.critic_loss)
+    ax8.legend()
     ax8.set_xlabel('Episode', fontsize=font_size)
     ax8.set_ylabel('Loss', fontsize=font_size)
     ax8.tick_params(axis='both', which='major', labelsize=font_size-5)
@@ -167,7 +169,7 @@ if __name__ == '__main__':
                     
                 s1_, s2_, r, r1, r2, done = env.step(action1, action2, step)  # 두개의 action 가지고 step
                 
-                sum += r
+                sum += r 
                 if step % 10 ==0 and step != 0:
                     avg = sum/10
                     #print("average of previous 5 eps rewards: ", avg)
@@ -199,7 +201,7 @@ if __name__ == '__main__':
                 eps_r1 += r1
                 eps_r2 += r2
 
-                if r == 0:
+                if params.success == False:
                     fail += 1
 
                 # update PPO

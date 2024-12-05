@@ -135,7 +135,7 @@ if __name__ == '__main__':
         for eps in range(params.EPS):
             fail = 0
             clst.form_static_cluster()
-            clst.visualize_clusters()
+            #clst.visualize_clusters()
             state1, state2_temp = env.reset(-1)
             episode_reward = 0
             eps_r1 = 0
@@ -188,7 +188,7 @@ if __name__ == '__main__':
                 eps_r1 += r1
                 eps_r2 += r2
 
-                if r == 0:
+                if params.success == False:
                     fail += 1
 
                 # update PPO

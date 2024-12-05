@@ -17,23 +17,23 @@ from torch.nn import MultiheadAttention
 MAX_EPI=10000
 MAX_STEP = 10000
 SAVE_INTERVAL = 20
-TARGET_UPDATE_INTERVAL = 10
+TARGET_UPDATE_INTERVAL = 5
 
 BATCH_SIZE = 128
-REPLAY_BUFFER_SIZE = 1000000
-REPLAY_START_SIZE = 5000
-
+REPLAY_START_SIZE = 10000
+EPSILON_DECAY = 30000
 GAMMA = 0.95
 EPSILON = 0.05  # if not using epsilon scheduler, use a constant
 if params.pre_trained == True:
-    EPSILON_START = 0.1
+    EPSILON_START = 0.5
 else:   
-    EPSILON_START = 0.9
+    EPSILON_START = 0.5
 EPSILON_END = 0.005
-if params.cloud <= 1:
-    EPSILON_DECAY = 100000
+if params.cloud < 1:
+    REPLAY_BUFFER_SIZE = 100000
 else:
-    EPSILON_DECAY = 100000
+    REPLAY_BUFFER_SIZE = 100000
+
 
 greedy = schemes.Greedy()
 nearest = schemes.Nearest()
@@ -77,72 +77,66 @@ class EpsilonScheduler():
     def get_epsilon(self):
         #print("epsilon:", self.epsilon)
         return self.epsilon
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+
+
 
 class QNetwork(nn.Module):
-    def __init__(self, act_shape, obs_shape, hidden_size=128):
+    def __init__(self, act_shape, obs_shape, hidden_size=params.hidden_dim, num_heads=4, dropout_rate=0.1):
         super(QNetwork, self).__init__()
 
-        # Conv1D for remains and hop with expanded channels
-        self.conv = nn.Conv1d(in_channels=2, out_channels=16, kernel_size=1, stride=1, padding=0)
+        # 1x1 Conv for remains and hops (Server State Features)
+        self.conv = nn.Conv1d(in_channels=2, out_channels=16, kernel_size=1, stride=1)
+
+        # Fully Connected Layer for Task Information
+        self.task_fc = nn.Linear(4, hidden_size)
+
+        # Attention: Key/Value from Server State, Query from Task
+        self.units = 16 * (params.maxEdge + 1)
+        self.query_dim = hidden_size
         
-        # Fully Connected for task information
-        self.task_fc = nn.Linear(4, hidden_size)  # Task and fraction information
-        
-        # Choose units based on cloud setting
-        self.units = 560 if params.cloud <= 1 else 544  # Adjusted for the increased out_channels
-        
-        # General Attention between task information and server states
-        self.general_attention = nn.MultiheadAttention(embed_dim=self.units, num_heads=1)
-        
-        # Final layers for action decision
-        self.fc1 = nn.Linear(self.units, hidden_size)
+        assert self.query_dim % num_heads == 0, "Query dim must be divisible by num_heads"
+        assert self.units % num_heads == 0, "Key/Value dim must be divisible by num_heads"
+
+        # Cross Attention: Task-Server State Interaction
+        self.cross_attention = MultiheadAttention(embed_dim=self.query_dim, kdim=self.units, vdim=self.units, num_heads=num_heads)
+
+        # Fully Connected Layers for Q-value prediction
+        self.fc1 = nn.Linear(self.query_dim, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, hidden_size)  # Additional FC Layer
         self.output = nn.Linear(hidden_size, act_shape)
 
-    def forward(self, state):
-        if params.cloud <= 1:
-            remain = state[:, :params.maxEdge+1].unsqueeze(1)  # Adding channel dimension
-            hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
-            task_and_frac = state[:, (params.maxEdge+1)*2:]
-        else:
-            remain = state[:, :params.maxEdge].unsqueeze(1)
-            hop = state[:, params.maxEdge:(params.maxEdge)*2].unsqueeze(1)
-            task_and_frac = state[:, (params.maxEdge)*2:]
+        # Dropout and Layer Normalization
+        self.dropout = nn.Dropout(dropout_rate)
+        self.ln1 = nn.LayerNorm(hidden_size)
+        self.ln2 = nn.LayerNorm(hidden_size)
 
-        # Process remains and hops with Conv1D
+    def forward(self, state):
+        # Split state into remains, hops, and task information
+        remain = state[:, :params.maxEdge+1].unsqueeze(1)
+        hop = state[:, params.maxEdge+1:(params.maxEdge+1)*2].unsqueeze(1)
+        task_and_frac = state[:, (params.maxEdge+1)*2:]
+
+        # Server State Features
         server_features = torch.cat((remain, hop), dim=1)
         x = F.relu(self.conv(server_features))
-        x = x.view(state.size(0), -1)  # Flatten for concatenation (batch_size, flattened_dim)
+        x = x.view(state.size(0), -1)
 
-        # Process task and fraction information
+        # Task Information Embedding
         task_embed = F.relu(self.task_fc(task_and_frac))
 
-        # Adjust `task_embed` size to match `x`
-        if task_embed.size(1) < x.size(1):
-            task_embed = F.pad(task_embed, (0, x.size(1) - task_embed.size(1)))
-        elif task_embed.size(1) > x.size(1):
-            task_embed = task_embed[:, :x.size(1)]
+        # Multihead Cross Attention
+        query = task_embed.unsqueeze(0)
+        key_value = x.unsqueeze(0)
+        attn_output, _ = self.cross_attention(query, key_value, key_value)
 
-        # Concatenate task_embed and server state representation for joint attention
-        combined = torch.cat((x, task_embed), dim=1)
-        
-        # Ensure combined dimension matches units for attention layer
-        if combined.size(1) != self.units:
-            combined = F.pad(combined, (0, self.units - combined.size(1)))
-
-        # Apply General Attention
-        combined = combined.unsqueeze(0)
-        attn_output, _ = self.general_attention(combined, combined, combined)
-        attn_output = attn_output.squeeze(0)
-
-        # Final decision layers
-        combined = F.relu(self.fc1(attn_output))
-        combined = F.relu(self.fc2(combined))
+        # Fully Connected Layers with Layer Normalization and Dropout
+        combined = F.relu(self.ln1(self.fc1(attn_output.squeeze(0) + task_embed)))
+        combined = self.dropout(combined)
+        combined = F.relu(self.ln2(self.fc2(combined)))
+        combined = F.relu(self.fc3(combined))  # Additional FC Layer for Depth
         q_values = self.output(combined)
-        
+
         return q_values
 
 

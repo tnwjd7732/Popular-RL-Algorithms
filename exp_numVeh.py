@@ -8,6 +8,16 @@ import clustering
 import my_ppo
 import my_dqn
 
+
+# 각 엣지 서버 위치 초기화
+x = -1
+for i in range(params.numEdge):
+    if i % params.grid_size == 0:
+        x += 1
+        y = 0
+    params.edge_pos[i] = [0.5 + y, 0.5 + x]
+    y += 1
+
 def run_experiment(numVeh, repeat):
     params.numVeh = numVeh
     results = {key: [] for key in [
@@ -46,12 +56,13 @@ def run_experiment(numVeh, repeat):
         'greedy_1': ('gree_succ', 'gree_reward', False, greedy, None, lambda: clst.random_list(params.numEdge, params.resource_avg, params.resource_std), 1, 1),
         'greedy_2': ('gree2_succ', 'gree2_reward', False, greedy, None, lambda: clst.random_list(params.numEdge, params.resource_avg, params.resource_std), 2, 1),
         'greedy_cloud_1': ('cloud_gree_succ', 'cloud_gree_reward', False, greedy_cloud, None, lambda: clst.random_list(params.numEdge, params.resource_avg, params.resource_std), 1, 1),
-        'greedy_cloud_2': ('cloud_gree2_succ', 'cloud_gree_reward', False, greedy_cloud, None, lambda: clst.random_list(params.numEdge, params.resource_avg, params.resource_std), 2, 1),
+        'greedy_cloud_2': ('cloud_gree2_succ', 'cloud_gree2_reward', False, greedy_cloud, None, lambda: clst.random_list(params.numEdge, params.resource_avg, params.resource_std), 2, 1),
     }
 
-    for _ in range(repeat):
-        set_positions(params.numEdge, params.grid_size)
+    
+ 
 
+    for _ in range(repeat):
         for key, (succ_key, reward_key, is_rl, model, secondary_model, setup, hop, cloud_setting) in schemes_dict.items():
             fail = 0
             params.cloud = cloud_setting  # 각 스킴에 맞게 클라우드 설정 적용
@@ -60,6 +71,7 @@ def run_experiment(numVeh, repeat):
             # 자원 초기화: RL 스킴은 클러스터 형성, 비-RL 스킴은 random_list로 자원 초기화
             if is_rl:
                 clst.form_cluster()  # RL 스킴의 경우 클러스터 초기화
+                clst.visualize_clusters()
             else:
                 params.remains = clst.random_list(params.numEdge, params.resource_avg, params.resource_std)  # 비-RL 스킴의 경우 random_list로 자원 초기화
 
@@ -67,24 +79,42 @@ def run_experiment(numVeh, repeat):
 
             for step in range(params.STEP * numVeh):
                 if is_rl:  # RL 스킴
-                    action1 = model.choose_action(state1)
-                    state2 = np.concatenate((state2_temp, action1)) if step == 0 else np.copy(state2)
-                    state2[-1] = action1
-                    params.state2 = state2
-                    action2 = secondary_model.choose_action(state2, 1)
-                    if len(env.cluster) < action2:
-                        if params.task[2] > 0.5:
-                            action2 = 0
+                    if key == 'wocloud123':
+                        if params.remains[params.nearest] >= params.resource_avg*0.5:
+                            action1, action2 = nearest.choose_action(step)
+                            s1_, s2_, r, r1, r2, done = env.step2(action1, action2, step)  # 두개의 action 가지고 step
+
                         else:
-                            _, action2 = nearest.choose_action(step)
-                    s1_, s2_, r, _, _, _ = env.step(action1, action2, step)
+                            action1 = model.choose_action(state1)
+                            state2 = np.concatenate((state2_temp, action1)) if step == 0 else np.copy(state2)
+                            state2[-1] = action1
+                            params.state2 = state2
+                            action2 = secondary_model.choose_action(state2, 1)
+                            if len(env.cluster) < action2:
+                                if params.task[2] > 0.5:
+                                    action2 = 0
+                                else:
+                                    _, action2 = nearest.choose_action(step)
+                            s1_, s2_, r, _, _, _ = env.step(action1, action2, step)
+                    else:
+                        action1 = model.choose_action(state1)
+                        state2 = np.concatenate((state2_temp, action1)) if step == 0 else np.copy(state2)
+                        state2[-1] = action1
+                        params.state2 = state2
+                        action2 = secondary_model.choose_action(state2, 1)
+                        if len(env.cluster) < action2:
+                            if params.task[2] > 0.5:
+                                action2 = 0 
+                            else:
+                                _, action2 = nearest.choose_action(step)
+                        s1_, s2_, r, _, _, _ = env.step(action1, action2, step)
                 else:  # Non-RL 스킴
                     action1, action2 = (model.choose_action(hop, step) if hop else model.choose_action(step))
                     s1_, s2_, r, *_ = env.step2(action1, action2, step)
 
                 state1, state2 = s1_, s2_
                 episode_reward += r
-                if r == 0:
+                if params.success == False:
                     fail += 1
             success_rate = (params.STEP * numVeh - fail) / (params.STEP * numVeh)
             
@@ -97,6 +127,7 @@ def run_experiment(numVeh, repeat):
 
 def set_positions(numEdge, grid_size):
     x = -1
+    y = 0
     for i in range(numEdge):
         if i % grid_size == 0:
             x += 1
@@ -154,11 +185,9 @@ def plot(results, veh_range):
     plt.tight_layout()
     plt.show()
 
-import parameters as params
-from exp_numVeh import run_experiment, plot  # run_experiment와 plot 함수 가져오기
 
 def main():
-    veh_range = range(200, 401, 100)  # 차량 수 범위 설정
+    veh_range = range(400, 701, 100)  # 차량 수 범위 설정
     repeat = params.repeat  # 반복 횟수 설정
 
     # 결과를 저장할 딕셔너리 초기화
@@ -180,3 +209,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    params.numVeh = 600

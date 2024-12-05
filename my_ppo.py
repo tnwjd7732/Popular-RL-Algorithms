@@ -36,12 +36,12 @@ A_LR = 0.0001
   # learning rate for actor
 C_LR = 0.0002  # learning rate for critic
 BATCH = 1024  # update batchsize
-A_UPDATE_STEPS = 50  # actor update steps
-C_UPDATE_STEPS = 50  # critic update steps
+A_UPDATE_STEPS = 20  # actor update steps
+C_UPDATE_STEPS = 20  # critic update steps
 EPS = 1e-8  # numerical residual
 METHOD = [
     dict(name='kl_pen', kl_target=0.01, lam=0.5),  # KL penalty
-    dict(name='clip', epsilon=0.2),  # Clipped surrogate objective, find this is better
+    dict(name='clip', epsilon=0.1),  # Clipped surrogate objective, find this is better
 ][1]  # choose the method for optimization
 
 ###############################  PPO  ####################################
@@ -75,7 +75,7 @@ class ValueNetwork(nn.Module):
         
         self.linear1 = nn.Linear(state_dim, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3 = nn.Linear(hidden_dim, hidden_dim)
+        #self.linear3 = nn.Linear(hidden_dim, hidden_dim)
         self.linear4 = nn.Linear(hidden_dim, 1)
         # weights initialization
         # self.linear4.weight.data.uniform_(-init_w, init_w)
@@ -84,7 +84,7 @@ class ValueNetwork(nn.Module):
     def forward(self, state):
         x = F.relu(self.linear1(state))
         x = F.relu(self.linear2(x))
-        x = F.relu(self.linear3(x))
+        #x = F.relu(self.linear3(x))
         x = self.linear4(x)
         return x
     
@@ -101,7 +101,7 @@ class PolicyNetwork(nn.Module):
         #self.dense1 = nn.Linear(params.state_dim1, 1)
         self.linear1 = nn.Linear(params.state_dim1, hidden_dim)  # Adjust input size after convolution
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        #ß self.linear3 = nn.Linear(hidden_dim, hidden_dim)
+        #self.linear3 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear4 = nn.Linear(hidden_dim, hidden_dim)
 
         self.mean_linear = nn.Linear(hidden_dim, num_actions)
@@ -126,9 +126,9 @@ class PolicyNetwork(nn.Module):
         #x = torch.cat((x1, task), dim=1)  # Ensure second part is also 2D
         x = F.relu(self.linear1(state))
         x = F.relu(self.linear2(x))
-        
+        #x = F.relu(self.linear3(x))
 
-        mean = self.action_range * torch.sigmoid(self.mean_linear(x))
+        mean = self.action_range * self.mean_linear(x)#* torch.sigmoid(self.mean_linear(x))
 
         zeros = torch.zeros(mean.size(), device=state.device)
         log_std = self.log_std(zeros)
@@ -149,9 +149,6 @@ class PolicyNetwork(nn.Module):
             normal = Normal(mean, std)
             action = normal.sample()
         action = torch.clamp(action, 0, self.action_range)
-        # action이 0.95보다 클 때 1로 변환, 나머지는 action 유지
-        #action = torch.where(action > 0.95, torch.tensor(1.0, device=action.device), action)
-
         #print("> PPO state: ", state, "action: ", action)
 
         return action.squeeze(0)
@@ -161,7 +158,7 @@ class PolicyNetwork(nn.Module):
         return a.numpy()
         
 class PPO(object):
-    def __init__(self, state_dim, action_dim, hidden_dim=128, a_lr=params.actorlr, c_lr=params.criticlr):
+    def __init__(self, state_dim, action_dim, hidden_dim=32, a_lr=params.actorlr, c_lr=params.criticlr):
         self.actor = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.actor_old = PolicyNetwork(state_dim, action_dim, hidden_dim, action_range=1.).to(device)
         self.critic = ValueNetwork(state_dim, hidden_dim).to(device)
@@ -178,7 +175,7 @@ class PPO(object):
         mu, log_std = self.actor(s)
         
         # log_std의 값을 적절한 범위로 제한
-        log_std = torch.clamp(log_std, min=-20, max=2)
+        log_std = torch.clamp(log_std, min=-20, max=5)
         
         # mu와 log_std에 nan 값이 없는지 확인
         if torch.isnan(mu).any() or torch.isinf(mu).any():
@@ -206,8 +203,10 @@ class PPO(object):
             aloss = -((surr - lam * kl).mean())
         else:  # clipping method, find this is better
             aloss = -torch.mean(torch.min(surr, torch.clamp(ratio, 1. - METHOD['epsilon'], 1. + METHOD['epsilon']) * adv))
+        params.actor_loss.append(aloss.detach().numpy())
         self.actor_optimizer.zero_grad()
         aloss.backward()
+        
         self.actor_optimizer.step()
         self.scheduler_actor.step()
 
@@ -227,8 +226,10 @@ class PPO(object):
         v = self.critic(s)
         advantage = cumulative_r - v
         closs = (advantage**2).mean()
+        params.critic_loss.append(closs.detach().numpy())
         self.critic_optimizer.zero_grad()
         closs.backward()
+        
         self.critic_optimizer.step()
         self.scheduler_critic.step()
         actor_lr = self.actor_optimizer.param_groups[0]['lr']

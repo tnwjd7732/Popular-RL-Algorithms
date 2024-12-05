@@ -18,6 +18,7 @@ nearest = schemes.Nearest()
 
 # 성능 및 비용 점수 계산 함수
 def run_experiment_performance_cost(numVeh, repeat, userplan):
+    params.numVeh = numVeh
     results = {
         'performance_score_fixed': [],
         'cost_score_fixed': [],
@@ -30,7 +31,7 @@ def run_experiment_performance_cost(numVeh, repeat, userplan):
         'success_score_basic': []
     }
     
-    params.numVeh = numVeh
+    
     x = -1
     for i in range(params.numEdge):
         if (i % params.grid_size == 0):
@@ -47,6 +48,7 @@ def run_experiment_performance_cost(numVeh, repeat, userplan):
         success_rates_fixed = []
 
         for _ in range(repeat):
+            
             clst.form_cluster()
             state1, state2_temp = env.reset(-1)
             episode_reward = 0
@@ -70,20 +72,21 @@ def run_experiment_performance_cost(numVeh, repeat, userplan):
                 t_tasktime = params.task[2]
                 t_total = params.realtime
                 performance_score = max(0, (t_tasktime - t_total) / t_tasktime) if t_tasktime != 0 else 0
-                c_max = params.max_size * params.unitprice_size * 1.65 + params.max_cpu * params.unitprice_cpu * 1.65
-                c_min = params.min_size * params.unitprice_size * 0.85 + params.min_cpu * params.unitprice_cpu * 0.85
+                c_max = (params.max_size * params.unitprice_size + params.max_cpu * params.unitprice_cpu) * 1.8 * 1.5 # 1.8: premium plan, 1.5: latency weight (for time-sensitive task)
+                c_min = (params.min_size * params.unitprice_size + params.min_cpu * params.unitprice_cpu) * 1.4 * 1.0 # 1.4: basic plan, 1: no time sensitive yask
                 cost_score = ((c_max - params.costpaid) / (c_max - c_min)) / (params.task[0] + params.task[1]) if (c_max - c_min) != 0 else 0
-                episode_reward += performance_score
+                
                 # 기존 성공률 계산 방식에서 조건을 약간 수정하여 고정 스킴의 특성 반영
-                if t_tasktime > t_total:
+                if params.success == True:
+                    episode_reward += performance_score
                     cost += cost_score
                     success_count += 1
 
                 state1, state2 = s1_, s2_
 
-            performance_scores_fixed.append(episode_reward / (params.STEP * numVeh)) # check all user
+            performance_scores_fixed.append(episode_reward / success_count) # check all user
             cost_scores_fixed.append(cost / success_count) #only count the success user set
-            success_rates_fixed.append(success_count / (params.STEP * numVeh))
+            success_rates_fixed.append(success_count / (params.STEP * params.numVeh))
 
         results['performance_score_fixed'] = np.mean(performance_scores_fixed)
         results['cost_score_fixed'] = np.mean(cost_scores_fixed)
@@ -132,21 +135,23 @@ def run_experiment_performance_cost(numVeh, repeat, userplan):
                 cost_score = ((c_max - params.costpaid) / (c_max - c_min)) / (params.task[0] + params.task[1]) if (c_max - c_min) != 0 else 0
 
                 if env.plan_info[veh_id] == 1:
-                    episode_reward_premium += performance_score
-                    if t_tasktime > t_total:
+                    
+                    if params.success == True:
                         cost_premium += cost_score
+                        episode_reward_premium += performance_score
                         pre_succ += 1
                     pre += 1
                 else:
-                    episode_reward_basic += performance_score
-                    if t_tasktime > t_total:
+                    
+                    if params.success == True:
                         cost_basic += cost_score
+                        episode_reward_basic += performance_score
                         basic_succ += 1
                     basic += 1
                 state1, state2 = s1_, s2_
 
-            performance_scores_premium.append(episode_reward_premium / pre if pre else 0)
-            performance_scores_basic.append(episode_reward_basic / basic if basic else 0)
+            performance_scores_premium.append(episode_reward_premium / pre_succ if pre else 0)
+            performance_scores_basic.append(episode_reward_basic / basic_succ if basic else 0)
             cost_scores_premium.append(cost_premium / pre_succ if pre_succ else 0)
             cost_scores_basic.append(cost_basic / basic_succ if basic_succ else 0)
             success_rates_premium.append(pre_succ / pre if pre else 0)
@@ -168,13 +173,13 @@ def plot_performance_cost_comparison(results, veh_range, fixed_allocations):
     font_size = params.font_size
 
     # 색상과 스타일 설정
-    fixed_colors = ['darkgreen', 'forestgreen', 'lightgreen']
+    fixed_colors = ['red', 'green', 'blue']
     premium_color = 'purple'
     basic_color = 'purple'
     markers = 'o'
     
     # Performance score plot
-    ax1.plot(veh_range, results['performance_score_basic'], label=" (Basic)", 
+    ax1.plot(veh_range, results['performance_score_basic'], label="Credit-based (Basic)", 
              color=basic_color, linestyle='--', marker=markers, linewidth=2)
     ax1.plot(veh_range, results['performance_score_premium'], label="Credit-based (Premium)", 
              color=premium_color, linestyle='-', marker=markers, linewidth=2)
@@ -223,7 +228,7 @@ def plot_performance_cost_comparison(results, veh_range, fixed_allocations):
 
 
 if __name__ == '__main__':
-    veh_range = range(200, 401, 50)
+    veh_range = range(500, 701, 50)
     repeat = params.repeat
     final_results = {
         'performance_score_basic': [],
@@ -257,3 +262,4 @@ if __name__ == '__main__':
             final_results[f'success_score_fixed_{fixed_allocation}'].append(avg_results_fixed['success_score_fixed'])
 
     plot_performance_cost_comparison(final_results, veh_range, fixed_allocations)
+    params.numVeh = 600
