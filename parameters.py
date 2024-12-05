@@ -53,8 +53,8 @@ premium_init = (premium_max+premium_min)/2
 
 '''hyper parameters'''
 dqnlr = 5e-4 # lr for dqn Q network
-actorlr = 1e-5  # lr for ppo actor net (=policy net) 이걸  1e-4, -5 이상 수준으로 줄이면 오히려 성능이 오르다가 다시 줄어드는 현상 보임
-criticlr = 1e-4  # lr for ppo critic net (=value net)
+actorlr = 5e-5  # lr for ppo actor net (=policy net) 이걸  1e-4, -5 이상 수준으로 줄이면 오히려 성능이 오르다가 다시 줄어드는 현상 보임
+criticlr = 5e-4  # lr for ppo critic net (=value net)
 cloud = 1 # 1: using cloud, 0: did not use cloud
 dqn_batch = 256  
 ppo_batch = 2048 
